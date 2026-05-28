@@ -189,11 +189,45 @@ async def get_last_response_text(page: Page) -> str:
     """
     text = await page.evaluate(js_extract)
     if text and len(text.strip()) > 50:
-        return text.strip()
+        return clean_response(text.strip())
 
     # Final fallback: innerText of the whole page (noisy but complete)
     log("scraper", "JS strategies returned short text — falling back to full page innerText")
-    return (await page.inner_text("body")).strip()
+    return clean_response((await page.inner_text("body")).strip())
+
+
+# Lines that are pure Gemini UI chrome — strip them from scraped responses
+_UI_NOISE = re.compile(
+    r"^\s*("
+    r"Google Search"
+    r"|Query successful"
+    r"|Try again without apps"
+    r"|Gemini said"
+    r"|Export to Sheets"
+    r"|Sources?"
+    r"|Share"
+    r"|Copy"
+    r"|Thumbs up"
+    r"|Thumbs down"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+
+def clean_response(text: str) -> str:
+    """Remove Gemini UI artefacts from a scraped response."""
+    lines = [ln for ln in text.splitlines() if not _UI_NOISE.match(ln)]
+    # Collapse runs of 3+ blank lines down to 2
+    out, blanks = [], 0
+    for ln in lines:
+        if ln.strip() == "":
+            blanks += 1
+            if blanks <= 2:
+                out.append(ln)
+        else:
+            blanks = 0
+            out.append(ln)
+    return "\n".join(out).strip()
 
 
 async def activate_gem(page: Page, gem_name: str) -> None:
@@ -235,12 +269,29 @@ async def activate_gem(page: Page, gem_name: str) -> None:
 
 
 async def send_message(page: Page, gem_name: str, text: str) -> None:
-    """Type a message into the Gemini input and send it."""
+    """
+    Inject text into the Gemini input and send it.
+
+    Short prompts use keystroke typing so Angular registers the change.
+    Long prompts (synthesis payloads) use JS clipboard injection + paste
+    to avoid per-character timeouts.
+    """
     input_el = await page.wait_for_selector(SELECTORS["input"], timeout=30_000)
     await input_el.click()
-    # Use type() so Angular's reactive form picks up individual keystrokes
-    await input_el.type(text, delay=5)
-    await asyncio.sleep(0.3)
+
+    if len(text) > 500:
+        # Write to clipboard via JS, then paste — fast and reliable for long text
+        escaped = text.replace("\\", "\\\\").replace("`", "\\`")
+        await page.evaluate(
+            f"navigator.clipboard.writeText(`{escaped}`)"
+        )
+        await asyncio.sleep(0.2)
+        modifier = "Meta" if sys.platform == "darwin" else "Control"
+        await page.keyboard.press(f"{modifier}+v")
+    else:
+        await input_el.type(text, delay=5)
+
+    await asyncio.sleep(0.5)
     send_btn = await page.wait_for_selector(SELECTORS["send_btn"], timeout=10_000)
     await send_btn.click()
     log(gem_name, "Prompt sent.")
