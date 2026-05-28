@@ -4,15 +4,15 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # ── CodeArtifact pip proxy (required by the sandbox build environment) ──────
-# These ARGs must appear before any pip install command.
 ARG CODEARTIFACT_AUTH_TOKEN
 ARG PIP_INDEX_URL
 
-# ── System dependencies + Chromium ──────────────────────────────────────────
-# Install Chromium from Debian repos so no internet download is needed at
-# runtime. playwright install chromium is skipped (see ENV below).
+# ── System dependencies: Chromium + Xvfb virtual display ────────────────────
+# Xvfb creates a virtual X11 display so Chromium can launch in a container
+# without a real display server (the sandbox has no XServer).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
+    xvfb \
     fonts-liberation \
     libnss3 \
     libatk1.0-0 \
@@ -37,7 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ── Application code ─────────────────────────────────────────────────────────
 COPY . .
 
-# ── Playwright: skip browser download, point to system Chromium ──────────────
+# ── Playwright: skip download, use system Chromium ───────────────────────────
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
@@ -52,5 +52,6 @@ RUN mkdir -p /data/browser-profile
 
 EXPOSE 3000
 
-# Exec form — required for proper SIGTERM handling on ECS task stop
-CMD ["python", "app.py"]
+# xvfb-run spins up a virtual X11 display before starting the app.
+# --auto-servernum avoids port conflicts; exec form ensures SIGTERM reaches Python.
+CMD ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1920x1080x24", "python", "app.py"]

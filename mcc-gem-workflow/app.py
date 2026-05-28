@@ -132,8 +132,6 @@ async def run_workflow_async(domain: str, flow: str, q: queue.Queue) -> None:
             "--no-sandbox",
             "--disable-dev-shm-usage",
         ]
-        if not HEADED:
-            chromium_args += ["--headless", "--headless=new"]
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_DIR,
             headless=not HEADED,

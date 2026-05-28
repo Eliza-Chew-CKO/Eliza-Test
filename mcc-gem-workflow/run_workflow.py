@@ -541,8 +541,6 @@ async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
             "--no-sandbox",
             "--disable-dev-shm-usage",
         ]
-        if not headed:
-            launch_args += ["--headless", "--headless=new"]
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=profile_dir,
             headless=not headed,
