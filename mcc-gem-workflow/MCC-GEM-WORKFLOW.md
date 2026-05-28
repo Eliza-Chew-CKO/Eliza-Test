@@ -38,9 +38,7 @@ Merchant domain: {{DOMAIN_URL}}
 
 Flow of funds: {{FLOW_OF_FUNDS}}
 
-Please identify:
-1. The MCC code(s) for this merchant with your reasoning
-2. The required documentation for onboarding
+Please identify the MCC code(s) for this merchant and the required documentation.
 ```
 
 Replace `{{DOMAIN_URL}}` and `{{FLOW_OF_FUNDS}}` with your actual inputs before sending.
@@ -138,9 +136,7 @@ Merchant domain: https://acme-marketplace.com
 
 Flow of funds: Buyers pay the marketplace. The marketplace holds funds and pays out sellers after a 7-day dispute window, minus a 15% commission. International payouts via Wise.
 
-Please identify:
-1. The MCC code(s) for this merchant with your reasoning
-2. The required documentation for onboarding
+Please identify the MCC code(s) for this merchant and the required documentation.
 ```
 
 **If no MCC in response:**

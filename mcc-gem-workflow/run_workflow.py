@@ -62,9 +62,7 @@ def initial_prompt(domain: str, flow: str) -> str:
     return (
         f"Merchant domain: {domain}\n\n"
         f"Flow of funds: {flow}\n\n"
-        "Please identify:\n"
-        "1. The MCC code(s) for this merchant with your reasoning\n"
-        "2. The required documentation for onboarding"
+        "Please identify the MCC code(s) for this merchant and the required documentation."
     )
 
 
