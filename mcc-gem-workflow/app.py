@@ -19,6 +19,16 @@ from pathlib import Path
 
 from flask import Flask, render_template, request, Response, stream_with_context
 
+# Start a virtual X11 display if no real display is available.
+# Required on Linux servers/containers/Codespaces without a display server.
+if not os.environ.get("DISPLAY"):
+    try:
+        from pyvirtualdisplay import Display
+        _vdisplay = Display(visible=False, size=(1920, 1080))
+        _vdisplay.start()
+    except Exception as _e:
+        print(f"[warn] Could not start virtual display: {_e}. Trying headless anyway.")
+
 # Import core workflow functions from run_workflow.py
 from run_workflow import (
     run_gem,
