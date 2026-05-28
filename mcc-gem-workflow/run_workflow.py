@@ -13,7 +13,11 @@ import argparse
 import re
 import sys
 from datetime import datetime
+from pathlib import Path
 from playwright.async_api import async_playwright, Page, BrowserContext
+
+# Set to True via --debug flag; saves screenshots + HTML on short/suspect responses
+DEBUG = False
 
 # ---------------------------------------------------------------------------
 # Gem configuration
@@ -192,11 +196,50 @@ async def get_last_response_text(page: Page) -> str:
     return (await page.inner_text("body")).strip()
 
 
+async def activate_gem(page: Page, gem_name: str) -> None:
+    """
+    Ensure the Gem's system prompt is active by starting a fresh conversation.
+
+    Gem URLs can land on: a gem detail/preview page, a previous conversation,
+    or (rarely) a direct chat. We normalise to a clean new-chat state so that
+    the Gem's configured instructions are always applied.
+    """
+    # Candidates for a "new chat" / "start" button on the Gem landing page
+    new_chat_selectors = [
+        'button[aria-label*="New chat"]',
+        'button[aria-label*="new chat"]',
+        'a[aria-label*="New chat"]',
+        # Gem detail page "Try" / "Start chatting" buttons
+        'button:has-text("Try this gem")',
+        'button:has-text("Start chatting")',
+        'button:has-text("New conversation")',
+        'a:has-text("New chat")',
+        # Gemini sidebar "New chat" icon
+        '[data-test-id="new-chat-button"]',
+        'bard-sidenav-new-chat-button button',
+    ]
+
+    for sel in new_chat_selectors:
+        try:
+            btn = await page.wait_for_selector(sel, timeout=3_000)
+            if btn:
+                await btn.click()
+                log(gem_name, f"Clicked new-chat button ({sel})")
+                await asyncio.sleep(2)
+                return
+        except Exception:
+            continue
+
+    # If no button found, the page may already be a blank chat — that's fine.
+    log(gem_name, "No new-chat button found — assuming blank chat is ready.")
+
+
 async def send_message(page: Page, gem_name: str, text: str) -> None:
     """Type a message into the Gemini input and send it."""
     input_el = await page.wait_for_selector(SELECTORS["input"], timeout=30_000)
     await input_el.click()
-    await input_el.fill(text)
+    # Use type() instead of fill() so the Angular reactive form picks up keystrokes
+    await input_el.press_sequentially(text, delay=5)
     await asyncio.sleep(0.3)
     send_btn = await page.wait_for_selector(SELECTORS["send_btn"], timeout=10_000)
     await send_btn.click()
@@ -215,7 +258,10 @@ async def run_gem(context: BrowserContext, gem_key: str, domain: str, flow: str)
 
     try:
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
-        await asyncio.sleep(2)  # let Angular bootstrap
+        await asyncio.sleep(3)  # let Angular bootstrap
+
+        # Start a fresh Gem conversation so the system prompt is applied
+        await activate_gem(page, name)
 
         # Send initial prompt
         prompt = initial_prompt(domain, flow)
@@ -224,6 +270,13 @@ async def run_gem(context: BrowserContext, gem_key: str, domain: str, flow: str)
 
         response = await get_last_response_text(page)
         log(name, f"Got response ({len(response)} chars)")
+
+        if DEBUG:
+            slug = name.replace(" ", "_").lower()
+            ts = datetime.now().strftime("%H%M%S")
+            await page.screenshot(path=f"debug_{slug}_{ts}.png", full_page=True)
+            Path(f"debug_{slug}_{ts}.html").write_text(await page.content(), encoding="utf-8")
+            log(name, f"Debug screenshot + HTML saved (debug_{slug}_{ts}.*)")
 
         # Follow-up if no MCC codes detected
         if not MCC_PATTERN.search(response):
@@ -251,7 +304,10 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
 
     try:
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
+
+        # Start a fresh Gem conversation so the system prompt is applied
+        await activate_gem(page, name)
 
         prompt = synthesis_prompt(domain, flow, outputs)
         await send_message(page, name, prompt)
@@ -259,6 +315,13 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
 
         response = await get_last_response_text(page)
         log(name, f"Synthesis complete ({len(response)} chars)")
+
+        if DEBUG:
+            ts = datetime.now().strftime("%H%M%S")
+            await page.screenshot(path=f"debug_synthesiser_{ts}.png", full_page=True)
+            Path(f"debug_synthesiser_{ts}.html").write_text(await page.content(), encoding="utf-8")
+            log(name, f"Debug screenshot + HTML saved (debug_synthesiser_{ts}.*)")
+
         return response
 
     except Exception as e:
@@ -435,6 +498,12 @@ def parse_args() -> argparse.Namespace:
         help="Run with a visible browser window (required for first-time Google login)",
     )
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Save a screenshot + HTML after each gem response (helps diagnose scraping issues)",
+    )
+    parser.add_argument(
         "--profile",
         default="./browser-profile",
         help="Path to persistent browser profile directory (default: ./browser-profile)",
@@ -444,4 +513,7 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.debug:
+        global DEBUG
+        DEBUG = True
     asyncio.run(main(args.domain, args.flow, args.headed, args.profile))
