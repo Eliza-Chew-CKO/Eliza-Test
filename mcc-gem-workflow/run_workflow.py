@@ -273,21 +273,37 @@ async def send_message(page: Page, gem_name: str, text: str) -> None:
     Inject text into the Gemini input and send it.
 
     Short prompts use keystroke typing so Angular registers the change.
-    Long prompts (synthesis payloads) use JS clipboard injection + paste
-    to avoid per-character timeouts.
+    Long prompts inject text directly via JS into the contenteditable div
+    and fire the necessary DOM events so Angular picks up the value.
     """
     input_el = await page.wait_for_selector(SELECTORS["input"], timeout=30_000)
     await input_el.click()
 
     if len(text) > 500:
-        # Write to clipboard via JS, then paste — fast and reliable for long text
-        escaped = text.replace("\\", "\\\\").replace("`", "\\`")
+        # Direct JS injection — avoids per-keystroke timeouts and clipboard
+        # permission issues in headless mode
         await page.evaluate(
-            f"navigator.clipboard.writeText(`{escaped}`)"
+            """(args) => {
+                const [sel, txt] = args;
+                const el = document.querySelector(sel);
+                if (!el) return;
+                el.focus();
+                // Set the text content
+                el.innerText = txt;
+                // Fire events Angular needs to detect the change
+                el.dispatchEvent(new Event('input',  { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                // Move caret to end
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+                const sel2 = window.getSelection();
+                sel2.removeAllRanges();
+                sel2.addRange(range);
+            }""",
+            [SELECTORS["input"], text],
         )
-        await asyncio.sleep(0.2)
-        modifier = "Meta" if sys.platform == "darwin" else "Control"
-        await page.keyboard.press(f"{modifier}+v")
+        await asyncio.sleep(0.5)
     else:
         await input_el.type(text, delay=5)
 
@@ -543,7 +559,12 @@ async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
 
         # Terminal: show only the final recommendation
         banner("✅  FINAL RECOMMENDATION", "", GREEN)
-        print(format_response(final))
+        formatted = format_response(final)
+        if formatted.strip():
+            print(formatted)
+        else:
+            # format_response stripped everything — print raw so output is never blank
+            print(f"  {final}")
 
         # Footer
         elapsed = (datetime.now() - started).seconds
