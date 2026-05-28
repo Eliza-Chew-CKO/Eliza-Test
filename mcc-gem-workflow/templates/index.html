@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Check Me 💎</title>
+  <style>
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3a;
+      --accent:    #6c63ff;
+      --accent-lt: #8b85ff;
+      --green:     #22c55e;
+      --yellow:    #f59e0b;
+      --red:       #ef4444;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --mcc-bg:    #1e3a2f;
+      --mcc-text:  #4ade80;
+      --radius:    12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    header .logo { font-size: 2.8rem; margin-bottom: 0.25rem; }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent-lt), var(--green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 0.4rem;
+      font-size: 0.95rem;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      max-width: 760px;
+      margin: 0 auto 1.5rem;
+    }
+
+    /* ── Form ── */
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    input[type="url"],
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+      padding: 0.7rem 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    input[type="url"]:focus,
+    textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 110px; line-height: 1.5; }
+
+    .field { margin-bottom: 1.25rem; }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 0.85rem;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+      letter-spacing: 0.02em;
+    }
+    button[type="submit"]:hover { background: var(--accent-lt); }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Progress ── */
+    #progress-card { display: none; }
+    .stage-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+    }
+    .stage-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .stage-text { color: var(--text); font-size: 0.92rem; line-height: 1.5; }
+    .log-row {
+      padding-left: 1.85rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-bottom: 0.25rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results ── */
+    #result-card { display: none; }
+    .result-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1.25rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-header h2 { font-size: 1.2rem; font-weight: 700; }
+    .result-header .badge {
+      background: var(--green);
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 99px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* ── Formatted output ── */
+    .output-body { line-height: 1.7; }
+    .output-body p { margin-bottom: 0.5rem; color: var(--text); }
+    .output-body .spacer { height: 0.5rem; }
+
+    .output-body h2.caps-heading {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--accent-lt);
+      margin: 1.5rem 0 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .output-body h3.section-heading {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--yellow);
+      margin: 1.25rem 0 0.4rem;
+    }
+
+    .output-body .mcc-line {
+      background: var(--mcc-bg);
+      border-left: 3px solid var(--green);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      margin: 0.4rem 0;
+      color: var(--mcc-text);
+    }
+    .mcc-badge {
+      background: var(--green);
+      color: #000;
+      font-weight: 800;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 0.88rem;
+    }
+
+    .output-body li {
+      margin-left: 1.25rem;
+      margin-bottom: 0.3rem;
+      color: var(--text);
+    }
+    .output-body ul { margin-bottom: 0.5rem; }
+
+    .output-body .numbered-item {
+      padding-left: 0.25rem;
+      margin-bottom: 0.35rem;
+    }
+
+    /* ── Error ── */
+    .error-msg {
+      background: #2d1515;
+      border: 1px solid var(--red);
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">💎</div>
+    <h1>Check Me</h1>
+    <p>MCC classification &amp; onboarding requirements — powered by 4 AI specialists</p>
+  </header>
+
+  <!-- Input form -->
+  <div class="card">
+    <form id="check-form">
+      <div class="field">
+        <label for="domain">🌐 Merchant Domain</label>
+        <input type="url" id="domain" name="domain" placeholder="https://example.com" required />
+      </div>
+      <div class="field">
+        <label for="flow">💸 Flow of Funds</label>
+        <textarea id="flow" name="flow" placeholder="Describe how money moves through the business — e.g. consumer pays platform, platform pays seller minus 10% fee, weekly payouts via bank transfer." required></textarea>
+      </div>
+      <button type="submit" id="submit-btn">🔍 Run Check</button>
+      <div class="error-msg" id="error-msg"></div>
+    </form>
+  </div>
+
+  <!-- Progress -->
+  <div class="card" id="progress-card">
+    <div id="progress-log"></div>
+  </div>
+
+  <!-- Result -->
+  <div class="card" id="result-card">
+    <div class="result-header">
+      <span style="font-size:1.4rem">✅</span>
+      <h2>Final Recommendation</h2>
+      <span class="badge">Complete</span>
+    </div>
+    <div class="output-body" id="result-body"></div>
+  </div>
+
+  <footer>Check Me · MCC Multi-Gem Workflow</footer>
+
+  <script>
+    const form       = document.getElementById('check-form');
+    const submitBtn  = document.getElementById('submit-btn');
+    const progressCard = document.getElementById('progress-card');
+    const progressLog  = document.getElementById('progress-log');
+    const resultCard   = document.getElementById('result-card');
+    const resultBody   = document.getElementById('result-body');
+    const errorMsg     = document.getElementById('error-msg');
+
+    const STAGE_ICONS = {
+      stage1:      '🚀',
+      stage2:      '🧠',
+      stage_done1: '✅',
+      stage_done2: '✅',
+      save:        '📄',
+    };
+
+    function addLog(msg) {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      row.textContent = msg;
+      progressLog.appendChild(row);
+    }
+
+    function addStage(icon, msg) {
+      const row = document.createElement('div');
+      row.className = 'stage-row';
+      row.innerHTML = `<span class="stage-icon">${icon}</span><span class="stage-text">${msg}</span>`;
+      progressLog.appendChild(row);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Reset UI
+      progressLog.innerHTML = '';
+      resultBody.innerHTML = '';
+      errorMsg.style.display = 'none';
+      progressCard.style.display = 'block';
+      resultCard.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> Running…';
+
+      addStage('💎', 'Starting Check Me workflow…');
+
+      const data = new FormData(form);
+
+      try {
+        const response = await fetch('/run', { method: 'POST', body: data });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete line
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event;
+            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+            if (event.type === 'stage') {
+              addStage(event.stage === 'stage1' ? '🚀' : '🧠', event.msg);
+            } else if (event.type === 'stage_done') {
+              addStage('✅', event.msg);
+            } else if (event.type === 'log') {
+              addLog(event.msg);
+            } else if (event.type === 'save') {
+              addLog('📄 ' + event.msg);
+            } else if (event.type === 'error') {
+              errorMsg.textContent = '⚠️ ' + event.msg;
+              errorMsg.style.display = 'block';
+            } else if (event.type === 'result') {
+              resultBody.innerHTML = event.html;
+              resultCard.style.display = 'block';
+              resultCard.scrollIntoView({ behavior: 'smooth' });
+            } else if (event.type === 'done') {
+              addStage('🏁', 'Workflow complete.');
+            }
+          }
+        }
+      } catch (err) {
+        errorMsg.textContent = '⚠️ Connection error: ' + err.message;
+        errorMsg.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '🔍 Run Check';
+      }
+    });
+  </script>
+</body>
+</html>

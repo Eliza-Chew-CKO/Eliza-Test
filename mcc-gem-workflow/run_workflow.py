@@ -16,6 +16,15 @@ from datetime import datetime
 from pathlib import Path
 from playwright.async_api import async_playwright, Page, BrowserContext
 
+# Symbols exported for use by app.py
+__all__ = [
+    "run_gem",
+    "run_synthesis",
+    "save_raw_outputs",
+    "GEMS",
+    "async_playwright",
+]
+
 # Set to True via --debug flag; saves screenshots + HTML on short/suspect responses
 DEBUG = False
 

@@ -10,33 +10,41 @@ playwright install chromium
 
 ## 2. First run — log in to Google
 
-Run with `--headed` so the browser window is visible. Log into your Google account when prompted, then press ENTER in the terminal.
+Start the web app with `--headed` so a browser window opens. Log into your Google account, then come back to the terminal and press ENTER.
 
 ```bash
-python run_workflow.py \
-  --domain https://example.com \
-  --flow "Consumer pays platform. Platform pays seller minus 10% fee. Weekly payouts." \
-  --headed
+python app.py --headed
 ```
 
 Your session is saved to `./browser-profile/`. You won't need `--headed` again unless you're logged out.
 
-## 3. Subsequent runs — headless
+## 3. Subsequent runs — open the web UI
+
+```bash
+python app.py
+```
+
+Then open **http://localhost:5000** in your browser.
+
+Enter the merchant domain and flow of funds, click **Run Check**, and the results will appear on the page.
+
+## Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--headed` | off | Show the browser window (needed for first login) |
+| `--port` | `5000` | Port to serve the web UI on |
+| `--profile` | `./browser-profile` | Path to save the browser session |
+
+## CLI (optional)
+
+The original terminal script still works if preferred:
 
 ```bash
 python run_workflow.py \
   --domain https://example.com \
   --flow "Consumer pays platform. Platform pays seller minus 10% fee. Weekly payouts."
 ```
-
-## Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--domain` | required | Merchant website URL |
-| `--flow` | required | Plain-English flow of funds |
-| `--headed` | off | Show the browser window (needed for first login) |
-| `--profile` | `./browser-profile` | Path to save the browser session |
 
 ## What it does
 
