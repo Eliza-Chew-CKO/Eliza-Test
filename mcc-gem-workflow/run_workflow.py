@@ -512,7 +512,6 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    global DEBUG
     args = parse_args()
     if args.debug:
         DEBUG = True
