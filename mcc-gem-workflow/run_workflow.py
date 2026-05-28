@@ -269,24 +269,104 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
 
 
 # ---------------------------------------------------------------------------
+# Pretty-print helpers
+# ---------------------------------------------------------------------------
+
+WIDTH = 72
+
+# ANSI colour codes (gracefully ignored if terminal doesn't support them)
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+DIM    = "\033[2m"
+CYAN   = "\033[96m"
+GREEN  = "\033[92m"
+YELLOW = "\033[93m"
+BLUE   = "\033[94m"
+PURPLE = "\033[95m"
+WHITE  = "\033[97m"
+
+
+def c(text: str, *codes: str) -> str:
+    return "".join(codes) + text + RESET
+
+
+def banner(title: str, emoji: str = "", colour: str = CYAN) -> None:
+    bar = "─" * WIDTH
+    print(f"\n{c(bar, colour)}")
+    label = f"  {emoji}  {title}  " if emoji else f"  {title}  "
+    print(c(f"{label}", colour, BOLD))
+    print(c(bar, colour))
+
+
+def section(title: str, emoji: str = "") -> None:
+    label = f"{emoji} {title}" if emoji else title
+    print(f"\n{c(label, YELLOW, BOLD)}")
+    print(c("  " + "·" * (WIDTH - 2), DIM))
+
+
+def format_response(text: str) -> str:
+    """
+    Lightly reformat plain-text Gem output for terminal readability:
+    - Indent every line slightly
+    - Prefix lines that look like list items with a bullet
+    - Highlight lines that contain a 4-digit MCC code
+    - Add a blank line after section headings (ALL CAPS or ending with ':')
+    """
+    lines = text.splitlines()
+    out = []
+    for raw in lines:
+        line = raw.rstrip()
+
+        # Blank line passthrough
+        if not line.strip():
+            out.append("")
+            continue
+
+        stripped = line.strip()
+
+        # Detect MCC lines — highlight them
+        if MCC_PATTERN.search(stripped):
+            out.append(c(f"  🏷️  {stripped}", GREEN, BOLD))
+            continue
+
+        # Detect existing list markers and normalise to bullet
+        if re.match(r'^[-*•]\s', stripped):
+            out.append(c(f"  • {stripped[2:].strip()}", WHITE))
+            continue
+
+        # Numbered list items
+        if re.match(r'^\d+[.)]\s', stripped):
+            out.append(c(f"  {stripped}", WHITE))
+            continue
+
+        # Section headings: ALL CAPS lines or lines ending with ':'
+        if stripped.isupper() and len(stripped) > 3:
+            out.append(f"\n{c('  ' + stripped, BLUE, BOLD)}")
+            continue
+        if stripped.endswith(":") and len(stripped) < 80 and "\n" not in stripped:
+            out.append(f"\n{c('  ' + stripped, PURPLE, BOLD)}")
+            continue
+
+        # Plain text — indent
+        out.append(f"  {stripped}")
+
+    return "\n".join(out)
+
+
+def print_gem_output(key: str, name: str, emoji: str, colour: str, text: str) -> None:
+    banner(name, emoji, colour)
+    print(format_response(text))
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def print_separator(title: str = "") -> None:
-    width = 70
-    if title:
-        pad = (width - len(title) - 2) // 2
-        print("\n" + "=" * pad + f" {title} " + "=" * pad)
-    else:
-        print("\n" + "=" * width)
-
-
 async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
-    print_separator("MCC MULTI-GEM WORKFLOW")
-    print(f"Domain     : {domain}")
-    print(f"Flow       : {flow}")
-    print(f"Started    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print_separator()
+    banner("MCC MULTI-GEM WORKFLOW", "💎", CYAN)
+    print(c(f"  🌐  Domain  : ", DIM) + c(domain, WHITE, BOLD))
+    print(c(f"  💸  Flow    : ", DIM) + c(flow, WHITE))
+    print(c(f"  🕐  Started : ", DIM) + c(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), WHITE))
 
     async with async_playwright() as p:
         browser = await p.chromium.launch_persistent_context(
@@ -300,36 +380,42 @@ async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
         await page.goto("https://gemini.google.com", wait_until="domcontentloaded", timeout=30_000)
 
         if headed:
-            print("\nBrowser is open. Log into your Google account if prompted.")
-            print("Press ENTER here once you are logged in and can see the Gemini home page.")
+            print(c("\n  ℹ️  Browser is open. Log into your Google account if prompted.", YELLOW))
+            print(c("  ⏎  Press ENTER here once you can see the Gemini home page.\n", YELLOW))
             await asyncio.get_event_loop().run_in_executor(None, input)
 
         await page.close()
 
         # --- Stage 1: Run Gems 1, 2, 3 in parallel ---
-        print_separator("STAGE 1 — Running Gems 1, 2, 3 in parallel")
+        section("Stage 1 — Querying Gems 1, 2 & 3 in parallel", "🚀")
         gem1_task = asyncio.create_task(run_gem(browser, "gem1", domain, flow))
         gem2_task = asyncio.create_task(run_gem(browser, "gem2", domain, flow))
         gem3_task = asyncio.create_task(run_gem(browser, "gem3", domain, flow))
 
         gem1_out, gem2_out, gem3_out = await asyncio.gather(gem1_task, gem2_task, gem3_task)
-
         outputs = {"gem1": gem1_out, "gem2": gem2_out, "gem3": gem3_out}
 
         # Print intermediate outputs
-        for key, label in [("gem1", "GEM 1 — Minimum Acceptance Criteria"),
-                            ("gem2", "GEM 2 — Pathward"),
-                            ("gem3", "GEM 3 — CRB")]:
-            print_separator(label)
-            print(outputs[key])
+        gem_meta = [
+            ("gem1", "Gem 1 — Minimum Acceptance Criteria", "📋", BLUE),
+            ("gem2", "Gem 2 — Pathward",                   "🏦", PURPLE),
+            ("gem3", "Gem 3 — CRB",                        "🔍", YELLOW),
+        ]
+        for key, name, emoji, colour in gem_meta:
+            print_gem_output(key, name, emoji, colour, outputs[key])
 
         # --- Stage 2: Synthesis via Gem 4 ---
-        print_separator("STAGE 2 — Synthesiser (Gem 4)")
+        section("Stage 2 — Synthesising via Gem 4", "🧠")
         final = await run_synthesis(browser, domain, flow, outputs)
 
-        print_separator("FINAL RECOMMENDATION")
-        print(final)
-        print_separator()
+        banner("✅  FINAL RECOMMENDATION", "", GREEN)
+        print(format_response(final))
+
+        # Footer
+        bar = "─" * WIDTH
+        print(f"\n{c(bar, DIM)}")
+        print(c(f"  ✔  Workflow complete  •  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", DIM))
+        print(c(bar, DIM) + "\n")
 
         await browser.close()
 
