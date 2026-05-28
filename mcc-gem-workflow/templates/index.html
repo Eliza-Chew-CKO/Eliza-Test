@@ -205,6 +205,118 @@
       margin-bottom: 0.35rem;
     }
 
+    /* BLUF */
+    .bluf-banner {
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      border: 1px solid #4f46e5;
+      border-radius: 10px;
+      padding: 0.8rem 1.1rem;
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #a5b4fc;
+      margin-bottom: 1rem;
+      letter-spacing: 0.02em;
+    }
+    .bluf-item {
+      background: var(--surface);
+      border-left: 3px solid #6c63ff;
+      border-radius: 0 8px 8px 0;
+      padding: 0.55rem 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+    .bluf-key { color: var(--accent-lt); font-weight: 700; }
+    .bluf-val { color: var(--text); }
+
+    /* Section headers */
+    .section-header {
+      font-size: 1rem;
+      font-weight: 800;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      margin: 1.5rem 0 0.75rem;
+      letter-spacing: 0.03em;
+    }
+    .section-1 { background: #1a2744; border-left: 4px solid #60a5fa; color: #93c5fd; }
+    .section-2 { background: #2d1515; border-left: 4px solid #ef4444; color: #fca5a5; }
+    .section-3 { background: #1a2a1a; border-left: 4px solid #4ade80; color: #86efac; }
+
+    /* Rationale / Merchant Framing */
+    .rationale-block {
+      background: #1e2535;
+      border-radius: 6px;
+      padding: 0.5rem 0.85rem;
+      margin: 0.4rem 0;
+      font-size: 0.88rem;
+      color: #94a3b8;
+    }
+    .rationale-label { color: var(--yellow); font-weight: 700; }
+    .merchant-framing { margin: 0.5rem 0 0.75rem; }
+    .mf-label { color: var(--green); font-weight: 700; font-size: 0.88rem; }
+    .mf-quote {
+      border-left: 3px solid var(--green);
+      margin: 0.35rem 0 0 0.5rem;
+      padding: 0.4rem 0.75rem;
+      color: #cbd5e1;
+      font-style: italic;
+      font-size: 0.9rem;
+      background: #0f2318;
+      border-radius: 0 6px 6px 0;
+    }
+
+    /* Red flag items in section 2 */
+    li.red-flag-item {
+      color: #fca5a5;
+      font-weight: 500;
+    }
+    li.red-flag-item::marker { color: #ef4444; }
+
+    /* Sub-headings */
+    h4.sub-heading {
+      color: var(--yellow);
+      font-size: 0.92rem;
+      font-weight: 700;
+      margin: 1rem 0 0.35rem;
+    }
+    h3.caps-heading { color: var(--accent-lt); font-size: 0.95rem; font-weight: 800; margin: 1.2rem 0 0.4rem; }
+
+    /* Iteration panel */
+    .iterate-panel {
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .iterate-panel h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 0.85rem; font-weight: 600; }
+    .iterate-buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .btn-secondary {
+      padding: 0.55rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--accent); background: #1f2233; }
+    .iterate-input { display: none; margin-top: 0.75rem; }
+    .iterate-input textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      padding: 0.65rem 0.85rem;
+      outline: none;
+      resize: vertical;
+      min-height: 80px;
+      font-family: inherit;
+      margin-bottom: 0.6rem;
+    }
+    .iterate-input textarea:focus { border-color: var(--accent); }
+    .iterate-result { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px dashed var(--border); }
+    .iterate-result-header { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+
     /* ── Error ── */
     .error-msg {
       background: #2d1515;
@@ -263,6 +375,20 @@
       <span class="badge">Complete</span>
     </div>
     <div class="output-body" id="result-body"></div>
+
+    <!-- Iteration panel -->
+    <div class="iterate-panel" id="iterate-panel" style="display:none">
+      <h3>🔄 Continue the conversation</h3>
+      <div class="iterate-buttons">
+        <button class="btn-secondary" id="btn-detail" onclick="sendIteration('detail')">🔍 Get more detail on each requirement</button>
+        <button class="btn-secondary" id="btn-addinfo" onclick="toggleAddInfo()">➕ Add more information</button>
+      </div>
+      <div class="iterate-input" id="iterate-input">
+        <textarea id="iterate-text" placeholder="Add context, clarify the business model, provide additional information…"></textarea>
+        <button type="button" class="btn-secondary" style="border-color: var(--accent); color: var(--accent-lt);" onclick="sendIteration('info')">Send to Synthesiser →</button>
+      </div>
+      <div id="iterate-results"></div>
+    </div>
   </div>
 
   <footer>Check Me · MCC Multi-Gem Workflow</footer>
@@ -348,6 +474,10 @@
               resultBody.innerHTML = event.html;
               resultCard.style.display = 'block';
               resultCard.scrollIntoView({ behavior: 'smooth' });
+              if (event.run_id) {
+                currentRunId = event.run_id;
+                document.getElementById('iterate-panel').style.display = 'block';
+              }
             } else if (event.type === 'done') {
               addStage('🏁', 'Workflow complete.');
             }
@@ -361,6 +491,78 @@
         submitBtn.innerHTML = '🔍 Run Check';
       }
     });
+
+    let currentRunId = null;
+
+    function toggleAddInfo() {
+      const inp = document.getElementById('iterate-input');
+      inp.style.display = inp.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function sendIteration(type) {
+      if (!currentRunId) return;
+
+      const detailMsg = "Please detail out each specific requirement — expand every item in Section 1, Section 2, and Section 3 with full context, exact document names, and specific merchant-facing language where applicable.";
+      const infoMsg = document.getElementById('iterate-text').value.trim();
+      const message = type === 'detail' ? detailMsg : infoMsg;
+
+      if (!message) return;
+
+      // Disable buttons
+      document.getElementById('btn-detail').disabled = true;
+      document.getElementById('btn-addinfo').disabled = true;
+
+      // Add a result container
+      const container = document.createElement('div');
+      container.className = 'iterate-result';
+      container.innerHTML = `<div class="iterate-result-header">🧠 Updated Recommendation</div><div class="output-body iter-body"><span class="spinner"></span> Synthesiser is thinking…</div>`;
+      document.getElementById('iterate-results').appendChild(container);
+      const body = container.querySelector('.iter-body');
+
+      const data = new FormData();
+      data.append('run_id', currentRunId);
+      data.append('message', message);
+
+      try {
+        const response = await fetch('/iterate', { method: 'POST', body: data });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let firstResult = true;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event;
+            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+            if (event.type === 'log') {
+              if (firstResult) { body.innerHTML = ''; firstResult = false; }
+              const p = document.createElement('div');
+              p.className = 'log-row';
+              p.textContent = event.msg;
+              body.appendChild(p);
+            } else if (event.type === 'result') {
+              body.innerHTML = event.html;
+              if (event.run_id) currentRunId = event.run_id;
+              container.scrollIntoView({ behavior: 'smooth' });
+            }
+          }
+        }
+      } catch (err) {
+        body.innerHTML = `<p style="color: var(--red)">⚠️ ${err.message}</p>`;
+      } finally {
+        document.getElementById('btn-detail').disabled = false;
+        document.getElementById('btn-addinfo').disabled = false;
+        if (type === 'info') document.getElementById('iterate-text').value = '';
+      }
+    }
   </script>
 </body>
 </html>

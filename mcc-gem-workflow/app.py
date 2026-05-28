@@ -14,10 +14,14 @@ import os
 import queue
 import re
 import threading
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, render_template, request, Response, stream_with_context
+
+# In-memory session store: run_id -> {domain, flow, outputs, final}
+_sessions: dict = {}
 
 # Start a virtual X11 display if no real display is available.
 # Required on Linux servers/containers/Codespaces without a display server.
@@ -60,71 +64,159 @@ HEADED = os.environ.get("HEADED", "false").lower() == "true"
 MCC_RE = re.compile(r'\b(\d{4})\b')
 
 
+async def select_pro_model(page, gem_name: str) -> None:
+    """Best-effort attempt to switch the Gem to Gemini 2.5 Pro."""
+    model_btn_selectors = [
+        'ms-model-selector button',
+        'bard-model-selector button',
+        'button[aria-label*="model"]',
+        'button[data-test-id*="model"]',
+    ]
+    for sel in model_btn_selectors:
+        try:
+            btn = await page.wait_for_selector(sel, timeout=2_000)
+            if btn:
+                await btn.click()
+                await asyncio.sleep(0.8)
+                for opt in ['div:has-text("2.5 Pro")', 'li:has-text("2.5 Pro")', 'button:has-text("2.5 Pro")', 'div:has-text("Pro")', 'li:has-text("Pro")']:
+                    try:
+                        el = await page.wait_for_selector(opt, timeout=1_500)
+                        if el:
+                            await el.click()
+                            log(gem_name, "Switched to Gemini 2.5 Pro")
+                            await asyncio.sleep(0.5)
+                            return
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+    log(gem_name, "Pro model selection skipped (may already be set or unavailable)")
+
+
 def format_html(text: str) -> str:
-    """Convert plain-text gem output to styled HTML."""
+    """Convert Gem 4 output to structured HTML preserving BLUF/Section 1/2/3 layout."""
     lines = text.splitlines()
-    html_parts = []
-    i = 0
-    while i < len(lines):
-        raw = lines[i].rstrip()
+    out = []
+    current_section = None
+    in_list = False
+
+    def close_list():
+        nonlocal in_list
+        if in_list:
+            out.append('</ul>')
+            in_list = False
+
+    def open_list():
+        nonlocal in_list
+        if not in_list:
+            out.append('<ul>')
+            in_list = True
+
+    for raw in lines:
         s = raw.strip()
 
         if not s:
-            html_parts.append('<div class="spacer"></div>')
-            i += 1
+            close_list()
+            out.append('<div class="spacer"></div>')
             continue
 
-        # MCC highlight — any line containing a 4-digit code
-        if MCC_RE.search(s):
-            highlighted = MCC_RE.sub(
-                r'<span class="mcc-badge">🏷️ \1</span>', s
-            )
-            html_parts.append(f'<p class="mcc-line"><strong>{highlighted}</strong></p>')
-            i += 1
+        # ── BLUF header ──────────────────────────────────────────────────────
+        if re.match(r'^BLUF\b', s, re.IGNORECASE):
+            close_list()
+            out.append(f'<div class="bluf-banner">⚡ {s}</div>')
+            current_section = 'bluf'
             continue
 
-        # Section headings ending with ':'
-        if s.endswith(':') and len(s) < 90:
-            html_parts.append(f'<h3 class="section-heading">{s}</h3>')
-            i += 1
+        # ── Section headers ───────────────────────────────────────────────────
+        sec_match = re.match(r'^(Section\s*(\d+)\s*:.+)', s, re.IGNORECASE)
+        if sec_match:
+            close_list()
+            sec_num = sec_match.group(2)
+            internal = 'INTERNAL' in s.upper()
+            if sec_num == '1':
+                icon, css = '📋', 'section-header section-1'
+            elif sec_num == '2':
+                icon, css = '⚠️', 'section-header section-2'
+            else:
+                icon, css = '📄', 'section-header section-3'
+            out.append(f'<div class="{css}">{icon} {s}</div>')
+            current_section = f'section{sec_num}'
             continue
 
-        # BLUF / ALL-CAPS headings
-        if s.isupper() and 3 < len(s) < 80:
-            html_parts.append(f'<h2 class="caps-heading">{s}</h2>')
-            i += 1
+        # ── BLUF key-value lines ──────────────────────────────────────────────
+        if current_section == 'bluf':
+            kv = re.match(r'^(Primary MCC|Risk Tier[^:]*|AFT Mandates[^:]*):\s*(.+)', s)
+            if kv:
+                close_list()
+                key, val = kv.group(1), kv.group(2)
+                val_html = MCC_RE.sub(r'<span class="mcc-badge">🏷️ \1</span>', val)
+                val_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', val_html)
+                out.append(f'<div class="bluf-item"><span class="bluf-key">{key}:</span> <span class="bluf-val">{val_html}</span></div>')
+                continue
+
+        # ── Rationale ─────────────────────────────────────────────────────────
+        if re.match(r'^Rationale\s*:', s, re.IGNORECASE):
+            close_list()
+            content = s[s.index(':')+1:].strip()
+            out.append(f'<div class="rationale-block"><span class="rationale-label">Rationale:</span> {content}</div>')
             continue
 
-        # Numbered list items
-        if re.match(r'^\d+[.)]\s', s):
-            html_parts.append(f'<p class="numbered-item">{s}</p>')
-            i += 1
+        # ── Merchant Framing ──────────────────────────────────────────────────
+        if re.match(r'^Merchant Framing\s*:', s, re.IGNORECASE):
+            close_list()
+            content = s[s.index(':')+1:].strip().strip('"').strip("'")
+            out.append(f'<div class="merchant-framing"><span class="mf-label">💬 Merchant Framing:</span><blockquote class="mf-quote">"{content}"</blockquote></div>')
             continue
 
-        # Bullet list items
+        # ── MCC highlight ─────────────────────────────────────────────────────
+        if MCC_RE.search(s) and not re.match(r'^[-*•]', s):
+            close_list()
+            hl = MCC_RE.sub(r'<span class="mcc-badge">🏷️ \1</span>', s)
+            hl = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', hl)
+            out.append(f'<p class="mcc-line">{hl}</p>')
+            continue
+
+        # ── Bullet items ──────────────────────────────────────────────────────
         if re.match(r'^[-*•]\s', s):
-            content = s[2:].strip()
-            html_parts.append(f'<li>{content}</li>')
-            i += 1
+            open_list()
+            content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s[2:].strip())
+            if current_section == 'section2':
+                out.append(f'<li class="red-flag-item">{content}</li>')
+            else:
+                out.append(f'<li>{content}</li>')
             continue
 
-        # Markdown-style bold **text**
-        s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
+        # ── Numbered items ────────────────────────────────────────────────────
+        if re.match(r'^\d+[.)]\s', s):
+            close_list()
+            content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
+            out.append(f'<p class="numbered-item">{content}</p>')
+            continue
 
-        # Markdown ## headings
+        # ── Sub-headings (short lines ending with ':' or ALL CAPS) ───────────
+        if s.endswith(':') and len(s) < 80:
+            close_list()
+            out.append(f'<h4 class="sub-heading">{s}</h4>')
+            continue
+
+        if s.isupper() and 3 < len(s) < 60:
+            close_list()
+            out.append(f'<h3 class="caps-heading">{s}</h3>')
+            continue
+
+        # ── Markdown ## headings ──────────────────────────────────────────────
         if s.startswith('## '):
-            html_parts.append(f'<h3 class="section-heading">{s[3:]}</h3>')
-            i += 1
-            continue
-        if s.startswith('# '):
-            html_parts.append(f'<h2 class="caps-heading">{s[2:]}</h2>')
-            i += 1
+            close_list()
+            out.append(f'<h3 class="sub-heading">{s[3:]}</h3>')
             continue
 
-        html_parts.append(f'<p>{s}</p>')
-        i += 1
+        # ── Plain paragraph ───────────────────────────────────────────────────
+        close_list()
+        content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
+        out.append(f'<p>{content}</p>')
 
-    return '\n'.join(html_parts)
+    close_list()
+    return '\n'.join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +226,8 @@ def format_html(text: str) -> str:
 async def run_workflow_async(domain: str, flow: str, q: queue.Queue) -> None:
     def progress(stage: str, msg: str, kind: str = "log") -> None:
         q.put({"type": kind, "stage": stage, "msg": msg})
+
+    run_id = str(uuid.uuid4())
 
     async with async_playwright() as p:
         chromium_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
@@ -178,15 +272,78 @@ async def run_workflow_async(domain: str, flow: str, q: queue.Queue) -> None:
         final = await run_synthesis(browser, domain, flow, outputs)
         progress("stage2", "Synthesis complete.", "stage_done")
 
+        # Store for iteration
+        _sessions[run_id] = {
+            "domain": domain,
+            "flow": flow,
+            "outputs": outputs,
+            "final": final,
+        }
+
         # Save raw outputs
         raw_file = save_raw_outputs(domain, outputs, final)
         progress("save", f"Raw outputs saved to {raw_file}")
 
         # Send final result
-        q.put({"type": "result", "html": format_html(final), "raw": final})
+        q.put({"type": "result", "html": format_html(final), "raw": final, "run_id": run_id})
         q.put(None)  # sentinel
 
         await browser.close()
+
+
+# ---------------------------------------------------------------------------
+# Iteration helper
+# ---------------------------------------------------------------------------
+
+async def run_iteration_async(run_id: str, message: str, q: queue.Queue) -> None:
+    session = _sessions.get(run_id)
+    if not session:
+        q.put({"type": "error", "msg": "Session expired. Please run a new Check."})
+        q.put(None)
+        return
+
+    def progress(msg: str) -> None:
+        q.put({"type": "log", "stage": "iterate", "msg": msg})
+
+    iter_prompt = (
+        f"Domain: {session['domain']}\n"
+        f"Flow of funds: {session['flow']}\n\n"
+        f"Previous synthesis:\n{session['final']}\n\n"
+        f"---\n{message}\n\n"
+        "Please respond maintaining the same structure: BLUF, Section 1 (Deal-Specific Requirements), "
+        "Section 2 (Red Flags [INTERNAL ONLY]), Section 3 (Standard MAF Items)."
+    )
+
+    async with async_playwright() as p:
+        chromium_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+        browser = await p.chromium.launch_persistent_context(
+            user_data_dir=PROFILE_DIR,
+            headless=not HEADED,
+            executable_path=chromium_path or None,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+        )
+
+        from run_workflow import run_synthesis, GEMS
+        page = await browser.new_page()
+        gem = GEMS["gem4"]
+        progress(f"Opening {gem['name']} for follow-up…")
+        await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
+        await asyncio.sleep(3)
+
+        from run_workflow import activate_gem, send_message, wait_for_response_complete, get_last_response_text, clean_response
+        await activate_gem(page, gem["name"])
+        await send_message(page, gem["name"], iter_prompt)
+        await wait_for_response_complete(page, gem["name"])
+        result = await get_last_response_text(page)
+        result = clean_response(result)
+        await page.close()
+        await browser.close()
+
+        # Update session with new synthesis
+        _sessions[run_id]["final"] = result
+
+        q.put({"type": "result", "html": format_html(result), "raw": result, "run_id": run_id})
+        q.put(None)
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +397,44 @@ def run():
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # disable nginx/proxy buffering
         },
+    )
+
+
+@app.route("/iterate", methods=["POST"])
+def iterate():
+    run_id = request.form.get("run_id", "").strip()
+    message = request.form.get("message", "").strip()
+
+    if not run_id or not message:
+        return {"error": "run_id and message are required."}, 400
+
+    q: queue.Queue = queue.Queue()
+
+    def start_iteration():
+        try:
+            asyncio.run(run_iteration_async(run_id, message, q))
+        except Exception as e:
+            q.put({"type": "error", "msg": str(e)})
+            q.put(None)
+
+    threading.Thread(target=start_iteration, daemon=True).start()
+
+    def stream():
+        while True:
+            try:
+                item = q.get(timeout=15)
+            except queue.Empty:
+                yield ": keepalive\n\n"
+                continue
+            if item is None:
+                yield 'data: {"type": "done"}\n\n'
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
