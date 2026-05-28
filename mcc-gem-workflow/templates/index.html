@@ -402,6 +402,8 @@
     const resultBody   = document.getElementById('result-body');
     const errorMsg     = document.getElementById('error-msg');
 
+    let currentRunId = null;
+
     const STAGE_ICONS = {
       stage1:      '🚀',
       stage2:      '🧠',
@@ -491,8 +493,6 @@
         submitBtn.innerHTML = '🔍 Run Check';
       }
     });
-
-    let currentRunId = null;
 
     function toggleAddInfo() {
       const inp = document.getElementById('iterate-input');
