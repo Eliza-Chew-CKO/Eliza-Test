@@ -9,6 +9,8 @@ Run:
 import asyncio
 import argparse
 import json
+import logging
+import os
 import queue
 import re
 import threading
@@ -26,10 +28,19 @@ from run_workflow import (
     async_playwright,
 )
 
+# Log to stdout so CloudWatch / container log drivers pick it up
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
-PROFILE_DIR = "./browser-profile"
-HEADED = False  # set via --headed at startup
+# Configurable via env vars so the container doesn't need CLI flags
+PROFILE_DIR = os.environ.get("BROWSER_PROFILE_DIR", "./browser-profile")
+HEADED = os.environ.get("HEADED", "false").lower() == "true"
 
 
 # ---------------------------------------------------------------------------
@@ -207,12 +218,14 @@ def run():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Check Me — MCC workflow web UI")
     parser.add_argument("--headed", action="store_true", help="Show browser (needed for first login)")
-    parser.add_argument("--port", type=int, default=5000)
-    parser.add_argument("--profile", default="./browser-profile")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 3000)))
+    parser.add_argument("--profile", default=PROFILE_DIR)
     args = parser.parse_args()
 
-    HEADED = args.headed
+    if args.headed:
+        HEADED = True
     PROFILE_DIR = args.profile
 
-    print(f"\n  💎  Check Me is running → http://localhost:{args.port}\n")
-    app.run(port=args.port, debug=False, threaded=True)
+    logger.info(f"💎 Check Me starting on http://0.0.0.0:{args.port}")
+    # Bind to 0.0.0.0 so the ALB health check and external traffic can reach it
+    app.run(host="0.0.0.0", port=args.port, debug=False, threaded=True)
