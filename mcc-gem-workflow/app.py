@@ -454,5 +454,31 @@ if __name__ == "__main__":
     PROFILE_DIR = args.profile
 
     logger.info(f"💎 Check Me starting on http://0.0.0.0:{args.port}")
-    # Bind to 0.0.0.0 so the ALB health check and external traffic can reach it
-    app.run(host="0.0.0.0", port=args.port, debug=False, threaded=True)
+    # Use gunicorn with gevent worker for reliable long-lived SSE streams.
+    # Falls back to Flask dev server if gunicorn is not installed.
+    try:
+        from gunicorn.app.base import BaseApplication
+
+        class StandaloneApp(BaseApplication):
+            def __init__(self, application, options=None):
+                self.options = options or {}
+                self.application = application
+                super().__init__()
+            def load_config(self):
+                for k, v in self.options.items():
+                    self.cfg.set(k.lower(), v)
+            def load(self):
+                return self.application
+
+        options = {
+            "bind": f"0.0.0.0:{args.port}",
+            "worker_class": "gevent",
+            "workers": 1,
+            "timeout": 600,        # 10 min — gems can take a while
+            "keepalive": 65,
+            "loglevel": "info",
+        }
+        StandaloneApp(app, options).run()
+    except ImportError:
+        logger.warning("gunicorn not found — falling back to Flask dev server")
+        app.run(host="0.0.0.0", port=args.port, debug=False, threaded=True)

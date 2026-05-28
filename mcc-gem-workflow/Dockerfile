@@ -55,3 +55,5 @@ EXPOSE 3000
 # xvfb-run spins up a virtual X11 display before starting the app.
 # --auto-servernum avoids port conflicts; exec form ensures SIGTERM reaches Python.
 CMD ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1920x1080x24", "python", "app.py"]
+# Note: app.py auto-detects gunicorn and uses it with a gevent worker +
+# 10-minute timeout, which keeps SSE streams alive for long gem runs.
