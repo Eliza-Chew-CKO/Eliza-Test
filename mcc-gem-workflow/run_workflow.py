@@ -467,9 +467,31 @@ def format_response(text: str) -> str:
     return "\n".join(out)
 
 
-def print_gem_output(key: str, name: str, emoji: str, colour: str, text: str) -> None:
-    banner(name, emoji, colour)
-    print(format_response(text))
+def save_raw_outputs(domain: str, outputs: dict, final: str) -> str:
+    """Save all gem outputs to a timestamped file. Returns the file path."""
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    slug = re.sub(r"[^\w.-]", "_", domain.replace("https://", "").replace("http://", ""))
+    filename = f"raw_outputs_{slug}_{ts}.txt"
+
+    gem_meta = [
+        ("gem1", "GEM 1 — Minimum Acceptance Criteria"),
+        ("gem2", "GEM 2 — Pathward"),
+        ("gem3", "GEM 3 — CRB"),
+    ]
+    sep = "=" * 72
+    lines = [
+        sep,
+        f"  RAW GEM OUTPUTS",
+        f"  Domain : {domain}",
+        f"  Saved  : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        sep,
+    ]
+    for key, label in gem_meta:
+        lines += ["", f"{'─' * 72}", f"  {label}", f"{'─' * 72}", "", outputs.get(key, "(no response)")]
+    lines += ["", sep, "  GEM 4 — SYNTHESISER (full raw response)", sep, "", final]
+
+    Path(filename).write_text("\n".join(lines), encoding="utf-8")
+    return filename
 
 
 # ---------------------------------------------------------------------------
@@ -477,10 +499,11 @@ def print_gem_output(key: str, name: str, emoji: str, colour: str, text: str) ->
 # ---------------------------------------------------------------------------
 
 async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
+    started = datetime.now()
     banner("MCC MULTI-GEM WORKFLOW", "💎", CYAN)
     print(c(f"  🌐  Domain  : ", DIM) + c(domain, WHITE, BOLD))
     print(c(f"  💸  Flow    : ", DIM) + c(flow, WHITE))
-    print(c(f"  🕐  Started : ", DIM) + c(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), WHITE))
+    print(c(f"  🕐  Started : ", DIM) + c(started.strftime("%Y-%m-%d %H:%M:%S"), WHITE))
 
     async with async_playwright() as p:
         browser = await p.chromium.launch_persistent_context(
@@ -508,27 +531,25 @@ async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
 
         gem1_out, gem2_out, gem3_out = await asyncio.gather(gem1_task, gem2_task, gem3_task)
         outputs = {"gem1": gem1_out, "gem2": gem2_out, "gem3": gem3_out}
-
-        # Print intermediate outputs
-        gem_meta = [
-            ("gem1", "Gem 1 — Minimum Acceptance Criteria", "📋", BLUE),
-            ("gem2", "Gem 2 — Pathward",                   "🏦", PURPLE),
-            ("gem3", "Gem 3 — CRB",                        "🔍", YELLOW),
-        ]
-        for key, name, emoji, colour in gem_meta:
-            print_gem_output(key, name, emoji, colour, outputs[key])
+        print(c(f"\n  ✅  All 3 gems responded.", GREEN, BOLD))
 
         # --- Stage 2: Synthesis via Gem 4 ---
         section("Stage 2 — Synthesising via Gem 4", "🧠")
         final = await run_synthesis(browser, domain, flow, outputs)
 
+        # Save raw outputs to file (keep terminal clean)
+        raw_file = save_raw_outputs(domain, outputs, final)
+        print(c(f"\n  📄  Raw gem outputs saved to: {raw_file}", DIM))
+
+        # Terminal: show only the final recommendation
         banner("✅  FINAL RECOMMENDATION", "", GREEN)
         print(format_response(final))
 
         # Footer
+        elapsed = (datetime.now() - started).seconds
         bar = "─" * WIDTH
         print(f"\n{c(bar, DIM)}")
-        print(c(f"  ✔  Workflow complete  •  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", DIM))
+        print(c(f"  ✔  Workflow complete  •  {elapsed}s  •  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", DIM))
         print(c(bar, DIM) + "\n")
 
         await browser.close()
