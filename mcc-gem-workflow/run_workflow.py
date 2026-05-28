@@ -512,8 +512,8 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    global DEBUG
     args = parse_args()
     if args.debug:
-        global DEBUG
         DEBUG = True
     asyncio.run(main(args.domain, args.flow, args.headed, args.profile))
