@@ -238,8 +238,8 @@ async def send_message(page: Page, gem_name: str, text: str) -> None:
     """Type a message into the Gemini input and send it."""
     input_el = await page.wait_for_selector(SELECTORS["input"], timeout=30_000)
     await input_el.click()
-    # Use type() instead of fill() so the Angular reactive form picks up keystrokes
-    await input_el.press_sequentially(text, delay=5)
+    # Use type() so Angular's reactive form picks up individual keystrokes
+    await input_el.type(text, delay=5)
     await asyncio.sleep(0.3)
     send_btn = await page.wait_for_selector(SELECTORS["send_btn"], timeout=10_000)
     await send_btn.click()
