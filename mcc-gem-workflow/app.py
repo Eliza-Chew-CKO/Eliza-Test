@@ -219,13 +219,28 @@ def run():
 
     def stream():
         while True:
-            item = q.get()
+            try:
+                # Short timeout so we can send keepalives while waiting
+                item = q.get(timeout=15)
+            except queue.Empty:
+                # Send an SSE comment as a heartbeat — keeps the connection
+                # alive through proxies and browser timeouts during long gem waits
+                yield ": keepalive\n\n"
+                continue
+
             if item is None:
                 yield "data: {\"type\": \"done\"}\n\n"
                 break
             yield f"data: {json.dumps(item)}\n\n"
 
-    return Response(stream_with_context(stream()), mimetype="text/event-stream")
+    return Response(
+        stream_with_context(stream()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable nginx/proxy buffering
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
