@@ -103,34 +103,93 @@ async def wait_for_response_complete(page: Page, gem_name: str) -> None:
     """Wait until Gemini stops generating (stop button disappears)."""
     log(gem_name, "Waiting for response...")
     try:
-        # Wait for the stop button to appear first (generation starts)
         await page.wait_for_selector(SELECTORS["stop_btn"], timeout=15_000)
-        # Then wait for it to disappear (generation finished)
         await page.wait_for_selector(
             SELECTORS["stop_btn"], state="hidden", timeout=RESPONSE_TIMEOUT_MS
         )
     except Exception:
-        # If stop button never appeared or we timed out, just pause briefly
         await asyncio.sleep(5)
-    # Small buffer for DOM to settle
+    # Extra buffer — Gemini sometimes re-renders after the stop button disappears
+    await asyncio.sleep(2)
+    # Scroll to bottom to ensure all streamed content is rendered
+    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
     await asyncio.sleep(1)
 
 
 async def get_last_response_text(page: Page) -> str:
-    """Extract the text from the most recent model response block."""
-    blocks = await page.query_selector_all(SELECTORS["response_block"])
-    if not blocks:
-        # Fallback: grab all visible text from the conversation
-        return await page.inner_text("body") or ""
-    last_block = blocks[-1]
-    # Try the specific text selector first, then fall back to the whole block
-    for sel in SELECTORS["response_text"].split(", "):
-        el = await last_block.query_selector(sel)
-        if el:
-            text = await el.inner_text()
-            if text.strip():
-                return text.strip()
-    return (await last_block.inner_text()).strip()
+    """
+    Extract the full text of the last model response.
+
+    Gemini renders responses inside nested custom elements and shadow DOM.
+    We try a prioritised list of strategies, from most-specific to broadest,
+    and return the longest non-empty result found.
+    """
+    # Strategy 1: walk known response container selectors via JS so we can
+    # reach into shadow roots and pick up all rendered text nodes.
+    js_extract = """
+    () => {
+        // Candidate container selectors in priority order
+        const containerSelectors = [
+            'model-response',
+            'ms-chat-turn[role="model"]',
+            '.model-response-text',
+            '[data-turn-role="model"]',
+            'chat-turn-model',
+        ];
+
+        // Inner text selectors to try within each container
+        const innerSelectors = [
+            '.markdown',
+            'message-content',
+            '.response-content',
+            '.model-response-text',
+            'p',   // last-resort: grab all paragraphs
+        ];
+
+        let best = '';
+
+        for (const containerSel of containerSelectors) {
+            const blocks = document.querySelectorAll(containerSel);
+            if (!blocks.length) continue;
+            const last = blocks[blocks.length - 1];
+
+            for (const innerSel of innerSelectors) {
+                const els = last.querySelectorAll(innerSel);
+                if (!els.length) continue;
+                const text = Array.from(els).map(e => e.innerText).join('\\n').trim();
+                if (text.length > best.length) best = text;
+            }
+
+            // Also try the container itself
+            const full = last.innerText ? last.innerText.trim() : '';
+            if (full.length > best.length) best = full;
+
+            if (best.length > 100) return best;  // good enough — stop searching
+        }
+
+        // Strategy 2: look for the last large block of text in the page
+        // (catches cases where Gemini changes its component names)
+        if (best.length < 100) {
+            const allDivs = Array.from(document.querySelectorAll('div, section, article'));
+            const candidates = allDivs
+                .map(el => el.innerText ? el.innerText.trim() : '')
+                .filter(t => t.length > 200);
+            if (candidates.length) {
+                const longest = candidates.reduce((a, b) => a.length > b.length ? a : b, '');
+                if (longest.length > best.length) best = longest;
+            }
+        }
+
+        return best;
+    }
+    """
+    text = await page.evaluate(js_extract)
+    if text and len(text.strip()) > 50:
+        return text.strip()
+
+    # Final fallback: innerText of the whole page (noisy but complete)
+    log("scraper", "JS strategies returned short text — falling back to full page innerText")
+    return (await page.inner_text("body")).strip()
 
 
 async def send_message(page: Page, gem_name: str, text: str) -> None:
