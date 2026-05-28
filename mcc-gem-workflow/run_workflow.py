@@ -537,6 +537,8 @@ async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
         # the process runs as root (default in Docker/ECS).
         chromium_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
         launch_args = ["--disable-blink-features=AutomationControlled", "--no-sandbox"]
+        if not headed:
+            launch_args.append("--headless=new")
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=profile_dir,
             headless=not headed,
