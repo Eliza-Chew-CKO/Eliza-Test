@@ -126,10 +126,12 @@ async def run_workflow_async(domain: str, flow: str, q: queue.Queue) -> None:
         q.put({"type": kind, "stage": stage, "msg": msg})
 
     async with async_playwright() as p:
+        chromium_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=PROFILE_DIR,
             headless=not HEADED,
-            args=["--disable-blink-features=AutomationControlled"],
+            executable_path=chromium_path or None,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
         )
 
         # Warm up — ensure login

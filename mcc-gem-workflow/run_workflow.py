@@ -10,6 +10,7 @@ First run: add --headed so you can log into Google. After that, the session is s
 
 import asyncio
 import argparse
+import os
 import re
 import sys
 from datetime import datetime
@@ -531,10 +532,16 @@ async def main(domain: str, flow: str, headed: bool, profile_dir: str) -> None:
     print(c(f"  🕐  Started : ", DIM) + c(started.strftime("%Y-%m-%d %H:%M:%S"), WHITE))
 
     async with async_playwright() as p:
+        # When running in a container, PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH points
+        # to the system Chromium installed via apt. --no-sandbox is required when
+        # the process runs as root (default in Docker/ECS).
+        chromium_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+        launch_args = ["--disable-blink-features=AutomationControlled", "--no-sandbox"]
         browser = await p.chromium.launch_persistent_context(
             user_data_dir=profile_dir,
             headless=not headed,
-            args=["--disable-blink-features=AutomationControlled"],
+            executable_path=chromium_path or None,
+            args=launch_args,
         )
 
         # Check login — navigate to Gemini home first
