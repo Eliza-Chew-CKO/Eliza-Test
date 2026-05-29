@@ -471,12 +471,21 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
     }
     """
 
-    # All known selectors for model-response containers across Gemini UI versions
+    # All known selectors for model-response containers across Gemini UI versions.
+    # Expanded to cover newer Angular/Web-Component Gemini UI variants.
     MODEL_SELS = [
         "model-response",
         "ms-chat-turn[role='model']",
         "[data-turn-role='model']",
         "chat-turn-model",
+        "[data-message-author-role='model']",
+        "[class*='ModelResponse']",
+        "[class*='model-response']",
+        "response-container",
+        "article[data-turn-role]",
+        # Gemini 2025 web component variants
+        "gemini-response",
+        "bard-response",
     ]
 
     async def count_model_responses() -> tuple[str, int]:
@@ -515,13 +524,31 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
             [sel, pre_count, ""],
         )
 
-    def bluf_anchor(raw: str) -> str:
-        """Find BLUF in page text and return everything from there."""
+    def bluf_anchor(raw: str, synth_prompt_text: str = "") -> str:
+        """Find the start of Gem 4's response using progressively broader anchors."""
+        # BEST: use the exact tail of the synthesis prompt to split the page text.
+        # The synthesis prompt is the user turn; everything after it is Gem 4's reply.
+        if synth_prompt_text:
+            for chunk_size in (300, 150, 80, 40):
+                anchor = synth_prompt_text.strip()[-chunk_size:]
+                if not anchor:
+                    continue
+                idx = raw.rfind(anchor)
+                if idx >= 0:
+                    candidate = clean_response(raw[idx + len(anchor):].strip())
+                    if len(candidate) > 100:
+                        log(name, f"Synth-prompt tail anchor matched (chunk={chunk_size})")
+                        return candidate
+
+        # Second: BLUF keyword — Gem 4 always starts its output here
         m = re.search(r'\bBLUF\b', raw, re.IGNORECASE)
         if m:
             return clean_response(raw[m.start():].strip())
-        # Fallback: tail of last gem output as anchor
-        for key in ("gem3", "gem2", "gem1"):
+
+        # Third: tail of the LAST item in the synthesis prompt (gem2 = Pathward,
+        # which is the final section of the prompt).  Try gem2 first so we split
+        # just before Gem 4's response, not mid-prompt.
+        for key in ("gem2", "gem1", "gem3"):
             tail = outputs.get(key, "").strip()
             for chunk in (150, 80, 40):
                 anchor = tail[-chunk:]
@@ -531,6 +558,7 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
                 if idx > 0:
                     candidate = clean_response(raw[idx + len(anchor):].strip())
                     if len(candidate) > 100:
+                        log(name, f"Gem-tail anchor matched: key={key} chunk={chunk}")
                         return candidate
         return ""
 
@@ -555,11 +583,11 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
             response = clean_response(raw_new) if raw_new else ""
             log(name, f"Strategy 1 (pre-count delta): {len(response)} chars")
 
-        # ── STRATEGY 2: BLUF anchor on full page text ──────────────────────
+        # ── STRATEGY 2: split on synthesis prompt tail + BLUF anchor ──────
         if not response or len(response) < 150:
-            log(name, "Trying BLUF anchor on full page text")
+            log(name, "Trying synth-prompt-tail / BLUF anchor on full page text")
             full_text = await page.inner_text("body")
-            response = bluf_anchor(full_text) or response
+            response = bluf_anchor(full_text, synth_prompt_text=prompt) or response
 
         # ── STRATEGY 3: wait 5 s and retry both ───────────────────────────
         if not response or len(response) < 150:
@@ -570,7 +598,7 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
                 response = clean_response(raw_new) if raw_new else response
             if not response or len(response) < 150:
                 full_text = await page.inner_text("body")
-                response = bluf_anchor(full_text) or response or full_text
+                response = bluf_anchor(full_text, synth_prompt_text=prompt) or response or full_text
 
         log(name, f"Synthesis complete ({len(response)} chars)")
 
