@@ -226,12 +226,65 @@ async def get_last_response_text(page: Page) -> str:
     }
     """
     text = await page.evaluate(js_extract)
-    if text and len(text.strip()) > 50:
-        return clean_response(text.strip())
+    text = text.strip() if text else ""
+
+    # Validate: if the text contains synthesis prompt markers it means we grabbed
+    # the user turn instead of the model response.  Re-extract specifically.
+    PROMPT_MARKERS = [
+        "--- MINIMUM ACCEPTANCE CRITERIA OUTPUT ---",
+        "--- PATHWARD OUTPUT ---",
+        "--- CRB OUTPUT ---",
+    ]
+    if not text or any(m in text for m in PROMPT_MARKERS):
+        log("scraper", "Initial extract contained prompt content — retrying with targeted model-response extraction")
+        text = await page.evaluate("""
+        () => {
+            const MARKERS = [
+                '--- MINIMUM ACCEPTANCE CRITERIA OUTPUT ---',
+                '--- PATHWARD OUTPUT ---',
+                '--- CRB OUTPUT ---',
+                'Merchant domain:',
+                'Flow of funds:',
+            ];
+            const isPrompt = t => MARKERS.some(m => t.includes(m));
+
+            // Walk every known model-response selector, newest last
+            const modelSels = [
+                'model-response', 'ms-chat-turn[role="model"]',
+                '[data-turn-role="model"]', '.model-response-text', 'chat-turn-model',
+            ];
+            for (const sel of modelSels) {
+                const blocks = Array.from(document.querySelectorAll(sel));
+                // Search from the end — most recent response first
+                for (let i = blocks.length - 1; i >= 0; i--) {
+                    const t = blocks[i].innerText ? blocks[i].innerText.trim() : '';
+                    if (t.length > 100 && !isPrompt(t)) return t;
+                }
+            }
+            // Last resort: find any sizable element that doesn't contain prompt markers
+            const allEls = Array.from(document.querySelectorAll('div, section, p'));
+            const clean = allEls
+                .map(el => el.innerText ? el.innerText.trim() : '')
+                .filter(t => t.length > 200 && !isPrompt(t));
+            if (clean.length) return clean.reduce((a, b) => a.length > b.length ? a : b);
+            return '';
+        }
+        """)
+        text = (text or "").strip()
+
+    if text and len(text) > 50:
+        return clean_response(text)
 
     # Final fallback: innerText of the whole page (noisy but complete)
     log("scraper", "JS strategies returned short text — falling back to full page innerText")
-    return clean_response((await page.inner_text("body")).strip())
+    raw = clean_response((await page.inner_text("body")).strip())
+    # Still strip prompt content from the full-page fallback
+    for marker in PROMPT_MARKERS:
+        if marker in raw:
+            # Take only text after the last section marker
+            parts = raw.rsplit(marker, 1)
+            raw = parts[-1].strip()
+    return raw
 
 
 # Lines that are pure Gemini UI chrome — strip them from scraped responses
@@ -412,6 +465,12 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
     page = await context.new_page()
     log(name, f"Opening {gem['url']}")
 
+    SYNTHESIS_MARKERS = [
+        "--- MINIMUM ACCEPTANCE CRITERIA OUTPUT ---",
+        "--- PATHWARD OUTPUT ---",
+        "--- CRB OUTPUT ---",
+    ]
+
     try:
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(3)
@@ -424,13 +483,28 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
         await wait_for_response_complete(page, name)
 
         response = await get_last_response_text(page)
+
+        # Safety check: if we accidentally got the prompt back, re-extract
+        if any(m in response for m in SYNTHESIS_MARKERS):
+            log(name, "⚠️  Extracted text looks like the prompt — retrying extraction in 3s")
+            await asyncio.sleep(3)
+            response = await get_last_response_text(page)
+            # If still bad, strip out the prompt sections manually as a last resort
+            if any(m in response for m in SYNTHESIS_MARKERS):
+                log(name, "⚠️  Second extraction still contains prompt — stripping prompt sections")
+                for marker in SYNTHESIS_MARKERS:
+                    if marker in response:
+                        response = response.rsplit(marker, 1)[-1].strip()
+
         log(name, f"Synthesis complete ({len(response)} chars)")
 
-        if DEBUG:
-            ts = datetime.now().strftime("%H%M%S")
-            await page.screenshot(path=f"debug_synthesiser_{ts}.png", full_page=True)
+        # Always save synthesiser HTML so we can diagnose scraping issues
+        ts = datetime.now().strftime("%H%M%S")
+        try:
             Path(f"debug_synthesiser_{ts}.html").write_text(await page.content(), encoding="utf-8")
-            log(name, f"Debug screenshot + HTML saved (debug_synthesiser_{ts}.*)")
+            log(name, f"Synthesiser page HTML saved (debug_synthesiser_{ts}.html)")
+        except Exception:
+            pass
 
         return response
 
