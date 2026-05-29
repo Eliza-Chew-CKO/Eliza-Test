@@ -320,13 +320,17 @@ def clean_response(text: str) -> str:
     return "\n".join(out).strip()
 
 
-async def activate_gem(page: Page, gem_name: str) -> None:
+async def activate_gem(page: Page, gem_name: str, gem_url: str = "") -> None:
     """
     Ensure the Gem's system prompt is active by starting a fresh conversation.
 
     Gem URLs can land on: a gem detail/preview page, a previous conversation,
-    or (rarely) a direct chat. We normalise to a clean new-chat state so that
+    or (rarely) a direct chat.  We normalise to a clean new-chat state so that
     the Gem's configured instructions are always applied.
+
+    Critical: if the page landed on an existing /app/ conversation the Gem's
+    system-prompt context may not be applied.  In that case we re-navigate to
+    the Gem URL to get back to the Gem detail/landing page.
     """
     # Candidates for a "new chat" / "start" button on the Gem landing page
     new_chat_selectors = [
@@ -343,19 +347,35 @@ async def activate_gem(page: Page, gem_name: str) -> None:
         'bard-sidenav-new-chat-button button',
     ]
 
-    for sel in new_chat_selectors:
-        try:
-            btn = await page.wait_for_selector(sel, timeout=3_000)
-            if btn:
-                await btn.click()
-                log(gem_name, f"Clicked new-chat button ({sel})")
-                await asyncio.sleep(2)
-                return
-        except Exception:
-            continue
+    async def _try_buttons() -> bool:
+        for sel in new_chat_selectors:
+            try:
+                btn = await page.wait_for_selector(sel, timeout=3_000)
+                if btn:
+                    await btn.click()
+                    log(gem_name, f"Clicked new-chat button ({sel})")
+                    await asyncio.sleep(2)
+                    return True
+            except Exception:
+                continue
+        return False
 
-    # If no button found, the page may already be a blank chat — that's fine.
-    log(gem_name, "No new-chat button found — assuming blank chat is ready.")
+    found = await _try_buttons()
+    if found:
+        return
+
+    # If we landed on an existing conversation (/app/ in URL) and found no
+    # button, re-navigate to the Gem URL to reach its landing/detail page so
+    # the system prompt is freshly loaded.
+    if gem_url and ("/app/" in page.url or not found):
+        log(gem_name, f"Landed on existing conversation ({page.url[:60]}…) — re-navigating to Gem URL")
+        await page.goto(gem_url, wait_until="domcontentloaded", timeout=60_000)
+        await asyncio.sleep(3)
+        found = await _try_buttons()
+        if found:
+            return
+
+    log(gem_name, f"No new-chat button found (URL: {page.url[:80]}) — assuming blank gem chat is ready.")
 
 
 async def send_message(page: Page, gem_name: str, text: str) -> None:
@@ -418,7 +438,7 @@ async def run_gem(context: BrowserContext, gem_key: str, domain: str, flow: str)
         await asyncio.sleep(3)  # let Angular bootstrap
 
         # Start a fresh Gem conversation so the system prompt is applied
-        await activate_gem(page, name)
+        await activate_gem(page, name, gem_url=gem["url"])
 
         # Send initial prompt
         prompt = initial_prompt(domain, flow)
@@ -566,22 +586,52 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(3)
 
-        await activate_gem(page, name)
+        await activate_gem(page, name, gem_url=gem["url"])
 
         # ── PRE-COUNT: record how many model responses exist before we send ──
         sel, pre_count = await count_model_responses()
         log(name, f"Pre-send model responses: sel={sel!r} count={pre_count}")
 
         prompt = synthesis_prompt(domain, flow, outputs)
+
+        # Intercept clipboard writes so we can capture the exact text Gemini
+        # copies when the user (or we) click the Copy button.
+        await page.evaluate("""
+            () => {
+                window._gemCopiedText = '';
+                const orig = navigator.clipboard.writeText.bind(navigator.clipboard);
+                navigator.clipboard.writeText = async (text) => {
+                    window._gemCopiedText = text;
+                    try { return await orig(text); } catch(e) {}
+                };
+            }
+        """)
+
         await send_message(page, name, prompt)
         await wait_for_response_complete(page, name)
 
-        # ── STRATEGY 1: get ONLY the newly-appeared model response element ──
+        # ── STRATEGY 0: clipboard — click Gemini's Copy button and read text ─
         response = ""
-        if sel:
-            raw_new = await get_new_response(sel, pre_count)
-            response = clean_response(raw_new) if raw_new else ""
-            log(name, f"Strategy 1 (pre-count delta): {len(response)} chars")
+        try:
+            copy_btns = await page.query_selector_all(
+                'button[aria-label="Copy"], button[aria-label="Copy to clipboard"], '
+                'button[aria-label*="copy" i], button[data-test-id*="copy" i]'
+            )
+            if copy_btns:
+                await copy_btns[-1].click()
+                await asyncio.sleep(0.5)
+                response = await page.evaluate("() => window._gemCopiedText || ''")
+                response = clean_response(response.strip()) if response else ""
+                log(name, f"Strategy 0 (clipboard): {len(response)} chars")
+        except Exception as clip_err:
+            log(name, f"Clipboard strategy failed: {clip_err}")
+
+        # ── STRATEGY 1: get ONLY the newly-appeared model response element ──
+        if not response or len(response) < 150:
+            if sel:
+                raw_new = await get_new_response(sel, pre_count)
+                response = clean_response(raw_new) if raw_new else ""
+                log(name, f"Strategy 1 (pre-count delta): {len(response)} chars")
 
         # ── STRATEGY 2: split on synthesis prompt tail + BLUF anchor ──────
         if not response or len(response) < 150:
@@ -589,13 +639,19 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
             full_text = await page.inner_text("body")
             response = bluf_anchor(full_text, synth_prompt_text=prompt) or response
 
-        # ── STRATEGY 3: wait 5 s and retry both ───────────────────────────
+        # ── STRATEGY 3: wait 5 s and retry clipboard + anchors ───────────
         if not response or len(response) < 150:
             log(name, "Short response — waiting 5s and retrying")
             await asyncio.sleep(5)
-            if sel:
-                raw_new = await get_new_response(sel, pre_count)
-                response = clean_response(raw_new) if raw_new else response
+            try:
+                if copy_btns:
+                    await copy_btns[-1].click()
+                    await asyncio.sleep(0.5)
+                    txt = await page.evaluate("() => window._gemCopiedText || ''")
+                    if txt and len(txt.strip()) > 150:
+                        response = clean_response(txt.strip())
+            except Exception:
+                pass
             if not response or len(response) < 150:
                 full_text = await page.inner_text("body")
                 response = bluf_anchor(full_text, synth_prompt_text=prompt) or response or full_text

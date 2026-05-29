@@ -809,6 +809,9 @@
       <span class="disambig-badge">Select Seam</span>
     </div>
     <div class="output-body" id="result-body"></div>
+    <div style="text-align:right;margin-top:0.5rem">
+      <a id="raw-link" href="#" target="_blank" style="font-size:0.75rem;color:var(--muted);text-decoration:none;opacity:0.6" title="View raw synthesiser text">📋 view raw output</a>
+    </div>
     <!-- MCC drill-down panel: shown when multiple MCCs are in the result -->
     <div class="mcc-drill-panel" id="mcc-drill-panel" style="display:none">
       <h3>⛏️ Drill deeper into a specific seam</h3>
@@ -982,6 +985,7 @@
               if (event.run_id) {
                 currentRunId = event.run_id;
                 document.getElementById('iterate-panel').style.display = 'block';
+                document.getElementById('raw-link').href = '/raw/' + event.run_id;
               }
             } else if (event.type === 'disambiguation') {
               finishLoadingBar();
@@ -991,7 +995,10 @@
               document.getElementById('iterate-panel').style.display = 'none';
               resultCard.style.display = 'block';
               resultCard.scrollIntoView({ behavior: 'smooth' });
-              if (event.run_id) currentRunId = event.run_id;
+              if (event.run_id) {
+                currentRunId = event.run_id;
+                document.getElementById('raw-link').href = '/raw/' + event.run_id;
+              }
             } else if (event.type === 'done') {
               addStage('💎', 'Strike confirmed — assay complete.');
             }

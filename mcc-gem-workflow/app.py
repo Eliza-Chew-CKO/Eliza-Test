@@ -461,7 +461,7 @@ async def run_iteration_async(run_id: str, message: str, q: queue.Queue) -> None
         await asyncio.sleep(3)
 
         from run_workflow import activate_gem, send_message, wait_for_response_complete, clean_response
-        await activate_gem(page, gem["name"])
+        await activate_gem(page, gem["name"], gem_url=gem["url"])
 
         # Pre-count model responses before sending
         pre_count = await _pre_count_model_responses(page)
@@ -524,7 +524,7 @@ async def run_mcc_selection_async(run_id: str, choice: str, q: queue.Queue) -> N
         progress(f"Opening {gem['name']} for MCC selection…")
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(3)
-        await activate_gem(page, gem["name"])
+        await activate_gem(page, gem["name"], gem_url=gem["url"])
 
         pre_count = await _pre_count_model_responses(page)
         await send_message(page, gem["name"], select_prompt)
@@ -553,6 +553,21 @@ async def run_mcc_selection_async(run_id: str, choice: str, q: queue.Queue) -> N
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/raw/<run_id>")
+def raw_output(run_id: str):
+    """Return the raw synthesiser text captured for a given run — for debugging."""
+    session = _sessions.get(run_id)
+    if not session:
+        return {"error": "run_id not found"}, 404
+    return Response(
+        f"=== RAW SYNTHESISER OUTPUT (run_id={run_id}) ===\n\n{session.get('final', '(empty)')}\n\n"
+        f"=== GEM 1 (MAC) ===\n\n{session.get('outputs', {}).get('gem1', '(empty)')}\n\n"
+        f"=== GEM 2 (Pathward) ===\n\n{session.get('outputs', {}).get('gem2', '(empty)')}\n\n"
+        f"=== GEM 3 (CRB) ===\n\n{session.get('outputs', {}).get('gem3', '(empty)')}\n",
+        mimetype="text/plain",
+    )
 
 
 @app.route("/run", methods=["POST"])
