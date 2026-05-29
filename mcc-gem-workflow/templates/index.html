@@ -519,9 +519,224 @@
       margin-top: 2rem;
       letter-spacing: 0.04em;
     }
+
+    /* ── Mine background illustration ── */
+    .mine-bg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.55;
+    }
+    body > * { position: relative; z-index: 1; }
+
+    @keyframes gem-pulse {
+      0%, 100% { opacity: 0.35; filter: brightness(1); }
+      50%       { opacity: 0.75; filter: brightness(1.8) drop-shadow(0 0 8px currentColor); }
+    }
+    @keyframes gem-pulse-b {
+      0%, 100% { opacity: 0.45; filter: brightness(1.1); }
+      50%       { opacity: 0.8;  filter: brightness(2) drop-shadow(0 0 10px currentColor); }
+    }
+    @keyframes torch-flicker {
+      0%,100% { opacity: 0.12; r: 55; }
+      25%     { opacity: 0.18; r: 62; }
+      50%     { opacity: 0.10; r: 50; }
+      75%     { opacity: 0.16; r: 58; }
+    }
+    @keyframes cart-roll {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-18px); }
+    }
+    @keyframes dust-rise {
+      0%   { opacity: 0.6; transform: translateY(0) scaleX(1); }
+      100% { opacity: 0;   transform: translateY(-30px) scaleX(1.4); }
+    }
+    @keyframes pick-swing {
+      0%,100% { transform: rotate(-30deg) translateX(0); }
+      45%     { transform: rotate(22deg) translateX(4px); }
+      50%     { transform: rotate(26deg) translateX(5px); }
+      55%     { transform: rotate(22deg) translateX(4px); }
+    }
+
+    .gem-a { animation: gem-pulse   3.4s ease-in-out infinite; }
+    .gem-b { animation: gem-pulse-b 4.1s ease-in-out infinite 0.8s; }
+    .gem-c { animation: gem-pulse   5.0s ease-in-out infinite 1.6s; }
+    .gem-d { animation: gem-pulse-b 3.7s ease-in-out infinite 0.3s; }
+    .gem-e { animation: gem-pulse   4.5s ease-in-out infinite 2.1s; }
+    .gem-f { animation: gem-pulse-b 3.2s ease-in-out infinite 1.2s; }
+    .gem-g { animation: gem-pulse   4.8s ease-in-out infinite 0.6s; }
+    .gem-h { animation: gem-pulse-b 5.2s ease-in-out infinite 2.5s; }
+
+    .torch-glow { animation: torch-flicker 2s ease-in-out infinite; }
+    .torch-glow-r { animation: torch-flicker 2.3s ease-in-out infinite 0.4s; }
+
+    /* Loading miner animation — shown inside progress card */
+    .miner-scene {
+      display: none;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 0;
+      height: 80px;
+      margin: 0.5rem 0 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    #progress-card.active .miner-scene { display: flex; }
+    .miner-pickaxe {
+      font-size: 2.2rem;
+      transform-origin: 80% 80%;
+      animation: pick-swing 0.7s ease-in-out infinite;
+      user-select: none;
+    }
+    .miner-sparks {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      display: flex;
+      gap: 3px;
+    }
+    .spark {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--accent-lt);
+      animation: dust-rise 0.6s ease-out infinite;
+    }
+    .spark:nth-child(2) { animation-delay: 0.15s; background: #fcd34d; width: 3px; height: 3px; }
+    .spark:nth-child(3) { animation-delay: 0.3s;  background: var(--green-lt); }
   </style>
 </head>
 <body>
+
+<!-- ════════════════════════════════════════════════
+     MINE BACKGROUND ILLUSTRATION (fixed, behind all UI)
+     ════════════════════════════════════════════════ -->
+<svg class="mine-bg" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice"
+     xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+
+  <!-- Left tunnel wall -->
+  <path d="M0,0 L380,0 L300,900 L0,900 Z" fill="#111315"/>
+  <!-- Right tunnel wall -->
+  <path d="M820,0 L1200,0 L1200,900 L900,900 Z" fill="#111315"/>
+
+  <!-- Stone strata — left -->
+  <path d="M0,120 Q190,108 360,125 L340,158 Q170,142 0,155 Z" fill="#191c1e" opacity="0.8"/>
+  <path d="M0,290 Q200,275 370,292 L350,328 Q180,312 0,328 Z" fill="#1c1f21" opacity="0.7"/>
+  <path d="M0,470 Q180,455 350,472 L330,510 Q160,493 0,510 Z" fill="#191c1e" opacity="0.7"/>
+  <path d="M0,650 Q175,637 345,652 L325,692 Q155,677 0,692 Z" fill="#1c1f21" opacity="0.6"/>
+
+  <!-- Stone strata — right -->
+  <path d="M840,95 Q1010,80 1200,100 L1200,135 Q1010,115 840,130 Z" fill="#191c1e" opacity="0.8"/>
+  <path d="M860,265 Q1030,250 1200,268 L1200,305 Q1030,287 860,302 Z" fill="#1c1f21" opacity="0.7"/>
+  <path d="M845,445 Q1020,430 1200,448 L1200,485 Q1020,468 845,482 Z" fill="#191c1e" opacity="0.7"/>
+  <path d="M855,625 Q1025,612 1200,628 L1200,668 Q1025,652 855,665 Z" fill="#1c1f21" opacity="0.6"/>
+
+  <!-- Tunnel floor -->
+  <path d="M280,900 L920,900 L850,820 L350,820 Z" fill="#0f1112"/>
+
+  <!-- Rail tracks (perspective) -->
+  <path d="M540,900 L560,900 L610,0 L592,0 Z" fill="#2a2d30" opacity="0.9"/>
+  <path d="M640,900 L660,900 L710,0 L692,0 Z" fill="#2a2d30" opacity="0.9"/>
+  <!-- Rail ties -->
+  <rect x="543" y="820" width="115" height="9"  rx="2" fill="#252829" opacity="0.85"/>
+  <rect x="548" y="710" width="105" height="8"  rx="2" fill="#252829" opacity="0.75"/>
+  <rect x="553" y="600" width="95"  height="7"  rx="2" fill="#252829" opacity="0.65"/>
+  <rect x="558" y="495" width="85"  height="6"  rx="2" fill="#252829" opacity="0.55"/>
+  <rect x="563" y="395" width="75"  height="5"  rx="2" fill="#252829" opacity="0.45"/>
+  <rect x="568" y="300" width="65"  height="4"  rx="2" fill="#252829" opacity="0.35"/>
+  <rect x="573" y="215" width="55"  height="3"  rx="2" fill="#252829" opacity="0.25"/>
+  <rect x="578" y="140" width="44"  height="3"  rx="2" fill="#252829" opacity="0.18"/>
+
+  <!-- Mine cart on the tracks -->
+  <g transform="translate(560,760)">
+    <rect x="10" y="12" width="80" height="45" rx="4" fill="#1e2224"/>
+    <rect x="14" y="8"  width="72" height="12" rx="2" fill="#252a2c"/>
+    <circle cx="28" cy="58" r="8" fill="#2a2d30" stroke="#3a3f42" stroke-width="1.5"/>
+    <circle cx="28" cy="58" r="3" fill="#3a3f42"/>
+    <circle cx="72" cy="58" r="8" fill="#2a2d30" stroke="#3a3f42" stroke-width="1.5"/>
+    <circle cx="72" cy="58" r="3" fill="#3a3f42"/>
+    <!-- ore inside cart -->
+    <ellipse cx="50" cy="20" rx="28" ry="10" fill="#1a1200" opacity="0.8"/>
+    <polygon points="38,18 50,8 62,18 56,22 44,22" fill="#92400e" opacity="0.7"/>
+    <polygon points="46,12 50,4  55,12" fill="#d97706" opacity="0.6"/>
+  </g>
+
+  <!-- Torch left wall -->
+  <rect x="355" y="185" width="8" height="22" rx="2" fill="#5a3e28"/>
+  <ellipse cx="359" cy="183" rx="5" ry="7" fill="#f59e0b" opacity="0.9"/>
+  <ellipse cx="359" cy="180" rx="3" ry="5" fill="#fcd34d" opacity="0.8"/>
+  <circle cx="359" cy="185" r="55" fill="#d97706" class="torch-glow" opacity="0.12"/>
+
+  <!-- Torch right wall -->
+  <rect x="837" y="185" width="8" height="22" rx="2" fill="#5a3e28"/>
+  <ellipse cx="841" cy="183" rx="5" ry="7" fill="#f59e0b" opacity="0.9"/>
+  <ellipse cx="841" cy="180" rx="3" ry="5" fill="#fcd34d" opacity="0.8"/>
+  <circle cx="841" cy="185" r="55" fill="#d97706" class="torch-glow-r" opacity="0.12"/>
+
+  <!-- Stalactites top -->
+  <path d="M60,0 L80,52 L40,52 Z"  fill="#1a1d1f" opacity="0.9"/>
+  <path d="M140,0 L162,68 L118,68 Z" fill="#191c1e" opacity="0.85"/>
+  <path d="M230,0 L248,44 L212,44 Z" fill="#1a1d1f" opacity="0.8"/>
+  <path d="M310,0 L324,36 L296,36 Z" fill="#191c1e" opacity="0.75"/>
+  <path d="M890,0 L908,44 L872,44 Z" fill="#1a1d1f" opacity="0.8"/>
+  <path d="M970,0 L992,60 L948,60 Z" fill="#191c1e" opacity="0.85"/>
+  <path d="M1070,0 L1088,50 L1052,50 Z" fill="#1a1d1f" opacity="0.8"/>
+  <path d="M1155,0 L1168,38 L1142,38 Z" fill="#191c1e" opacity="0.75"/>
+
+  <!-- ── DIAMONDS in left wall ── -->
+  <!-- blue diamond -->
+  <polygon class="gem-a" points="108,162 132,182 108,202 84,182"  fill="#7dd3fc" stroke="#bae6fd" stroke-width="0.8"/>
+  <polygon class="gem-a" points="115,169 132,182 115,195 98,182"  fill="#bae6fd" opacity="0.4"/>
+  <!-- green emerald -->
+  <polygon class="gem-b" points="55,345 75,362 55,379 35,362"    fill="#86efac" stroke="#bbf7d0" stroke-width="0.8"/>
+  <polygon class="gem-b" points="62,352 75,362 62,372 49,362"    fill="#bbf7d0" opacity="0.4"/>
+  <!-- gold nugget -->
+  <polygon class="gem-c" points="185,505 208,524 185,543 162,524" fill="#fcd34d" stroke="#fef08a" stroke-width="0.8"/>
+  <polygon class="gem-c" points="192,512 208,524 192,536 176,524" fill="#fef08a" opacity="0.4"/>
+  <!-- purple amethyst -->
+  <polygon class="gem-d" points="90,645 110,662 90,679 70,662"   fill="#c4b5fd" stroke="#ddd6fe" stroke-width="0.8"/>
+  <polygon class="gem-d" points="97,652 110,662 97,672 84,662"   fill="#ddd6fe" opacity="0.4"/>
+  <!-- teal -->
+  <polygon class="gem-e" points="240,745 258,760 240,775 222,760" fill="#67e8f9" stroke="#a5f3fc" stroke-width="0.8"/>
+  <polygon class="gem-e" points="246,752 258,760 246,768 234,760" fill="#a5f3fc" opacity="0.4"/>
+  <!-- small blue top-left -->
+  <polygon class="gem-f" points="175,82 190,94 175,106 160,94"   fill="#93c5fd" stroke="#bfdbfe" stroke-width="0.8"/>
+
+  <!-- ── DIAMONDS in right wall ── -->
+  <!-- gold -->
+  <polygon class="gem-b" points="1030,138 1055,158 1030,178 1005,158" fill="#fcd34d" stroke="#fef08a" stroke-width="0.8"/>
+  <polygon class="gem-b" points="1038,146 1055,158 1038,170 1021,158" fill="#fef08a" opacity="0.4"/>
+  <!-- blue -->
+  <polygon class="gem-c" points="950,298 972,316 950,334 928,316"    fill="#7dd3fc" stroke="#bae6fd" stroke-width="0.8"/>
+  <polygon class="gem-c" points="957,306 972,316 957,326 942,316"    fill="#bae6fd" opacity="0.4"/>
+  <!-- emerald -->
+  <polygon class="gem-a" points="1085,438 1108,456 1085,474 1062,456" fill="#86efac" stroke="#bbf7d0" stroke-width="0.8"/>
+  <polygon class="gem-a" points="1093,446 1108,456 1093,466 1078,456" fill="#bbf7d0" opacity="0.4"/>
+  <!-- purple -->
+  <polygon class="gem-g" points="925,568 946,585 925,602 904,585"    fill="#c4b5fd" stroke="#ddd6fe" stroke-width="0.8"/>
+  <polygon class="gem-g" points="933,576 946,585 933,594 920,585"    fill="#ddd6fe" opacity="0.4"/>
+  <!-- teal -->
+  <polygon class="gem-h" points="1045,695 1065,712 1045,729 1025,712" fill="#67e8f9" stroke="#a5f3fc" stroke-width="0.8"/>
+  <polygon class="gem-h" points="1052,703 1065,712 1052,721 1039,712" fill="#a5f3fc" opacity="0.4"/>
+  <!-- small gold top-right -->
+  <polygon class="gem-f" points="1000,85 1018,98 1000,111 982,98"    fill="#fcd34d" stroke="#fef08a" stroke-width="0.8"/>
+
+  <!-- Depth darkness gradient overlay top/bottom -->
+  <defs>
+    <linearGradient id="fadeTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#0a0b0c" stop-opacity="0.7"/>
+      <stop offset="30%" stop-color="#0a0b0c" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="fadeBot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="70%" stop-color="#0a0b0c" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#0a0b0c" stop-opacity="0.8"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#fadeTop)"/>
+  <rect x="0" y="0" width="1200" height="900" fill="url(#fadeBot)"/>
+</svg>
 
   <header>
     <div class="logo">⛏️</div>
@@ -542,7 +757,7 @@
         <label for="flow">💰 Flow of Funds</label>
         <textarea id="flow" name="flow" placeholder="Describe how money moves through the business — e.g. consumer pays platform, platform pays seller minus 10% fee, weekly payouts via bank transfer." required></textarea>
       </div>
-      <button type="submit" id="submit-btn">⛏️ Begin Prospecting</button>
+      <button type="submit" id="submit-btn">⛏️ Check Me</button>
       <div class="error-msg" id="error-msg"></div>
     </form>
   </div>
@@ -550,6 +765,31 @@
   <!-- Progress -->
   <div class="card" id="progress-card">
     <div class="card-title">🪨 Mining in Progress</div>
+    <!-- Animated miner scene -->
+    <div class="miner-scene">
+      <div style="position:relative;width:160px;height:80px;">
+        <!-- rails -->
+        <div style="position:absolute;bottom:8px;left:10px;right:10px;height:3px;background:#2c3033;border-radius:2px;"></div>
+        <div style="position:absolute;bottom:4px;left:10px;right:10px;height:3px;background:#2c3033;border-radius:2px;"></div>
+        <!-- cart -->
+        <div style="position:absolute;bottom:10px;left:35px;width:55px;height:32px;background:#1e2224;border-radius:4px;border:1px solid #2c3033;">
+          <div style="position:absolute;top:4px;left:6px;right:6px;height:8px;background:#92400e;border-radius:2px;opacity:0.8;"></div>
+          <div style="position:absolute;bottom:-8px;left:8px;width:10px;height:10px;background:#252829;border-radius:50%;border:2px solid #3a3f42;"></div>
+          <div style="position:absolute;bottom:-8px;right:8px;width:10px;height:10px;background:#252829;border-radius:50%;border:2px solid #3a3f42;"></div>
+        </div>
+        <!-- miner -->
+        <div class="miner-pickaxe" style="position:absolute;bottom:26px;left:8px;">⛏️</div>
+        <!-- sparks -->
+        <div class="miner-sparks">
+          <div class="spark"></div>
+          <div class="spark"></div>
+          <div class="spark"></div>
+        </div>
+        <!-- wall gems flickering -->
+        <div style="position:absolute;top:5px;right:6px;font-size:1.1rem;animation:gem-pulse 2s ease-in-out infinite;">💎</div>
+        <div style="position:absolute;top:18px;right:2px;font-size:0.7rem;animation:gem-pulse 2.8s ease-in-out infinite 0.6s;">💎</div>
+      </div>
+    </div>
     <div class="shaft-label">⬇ Shaft Depth</div>
     <div class="loading-bar-wrap"><div class="loading-bar-fill" id="loading-bar"></div></div>
     <div class="loading-eta" id="loading-eta">Calculating depth…</div>
@@ -687,6 +927,7 @@
       resultBody.innerHTML = '';
       errorMsg.style.display = 'none';
       progressCard.style.display = 'block';
+      progressCard.classList.add('active');
       resultCard.style.display = 'none';
       document.getElementById('mcc-drill-panel').style.display = 'none';
       document.getElementById('iterate-panel').style.display = 'none';
@@ -761,8 +1002,9 @@
         errorMsg.style.display = 'block';
       } finally {
         clearInterval(_barTimer);
+        progressCard.classList.remove('active');
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '⛏️ Begin Prospecting';
+        submitBtn.innerHTML = '⛏️ Check Me';
       }
     });
 

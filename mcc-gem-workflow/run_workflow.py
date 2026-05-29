@@ -84,17 +84,11 @@ FOLLOWUP_PROMPT = "What are the MCC codes for this merchant?"
 
 
 def synthesis_prompt(domain: str, flow: str, outputs: dict) -> str:
-    """Pass exact gem outputs to Gem 4 — let its system prompt dictate the format."""
-    sections = []
-    for key, info in [("gem1", GEMS["gem1"]), ("gem2", GEMS["gem2"]), ("gem3", GEMS["gem3"])]:
-        sections.append(
-            f"--- {info['name'].upper()} OUTPUT ---\n{outputs.get(key, '(no response)')}"
-        )
-    body = "\n\n".join(sections)
+    """Minimal stitch of the three gem outputs — Gem 4's system prompt handles everything else."""
     return (
-        f"Merchant domain: {domain}\n\n"
-        f"Flow of funds: {flow}\n\n"
-        f"{body}"
+        f"MAC bot: {outputs.get('gem1', '(no response)')}\n\n"
+        f"CRB bot: {outputs.get('gem3', '(no response)')}\n\n"
+        f"Pathward bot: {outputs.get('gem2', '(no response)')}"
     )
 
 
@@ -465,70 +459,53 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
     page = await context.new_page()
     log(name, f"Opening {gem['url']}")
 
-    SYNTHESIS_MARKERS = [
-        "--- MINIMUM ACCEPTANCE CRITERIA OUTPUT ---",
-        "--- PATHWARD OUTPUT ---",
-        "--- CRB OUTPUT ---",
-    ]
+    PROMPT_ANCHORS = ["MAC bot:", "CRB bot:", "Pathward bot:"]
 
     def extract_synthesiser_output(raw: str) -> str:
         """
-        Gem 4 always starts its output with BLUF.
-        Gems 1-3 never use BLUF.
-        So find the first occurrence of BLUF in the page text — that's where
-        the Synthesiser's response begins.
+        Gem 4 always starts its output with BLUF — gems 1-3 never do.
+        Anchor on the first BLUF occurrence in the page text.
         """
         m = re.search(r'\bBLUF\b', raw, re.IGNORECASE)
         if m:
             return clean_response(raw[m.start():].strip())
 
-        # Fallback: find where the CRB output ends by searching for the tail
-        # of the gem3 output text.  What comes after it is Gem 4's response.
-        gem3_tail = outputs.get("gem3", "").strip()
-        for chunk in [150, 80, 40]:
-            if not gem3_tail:
-                break
-            anchor = gem3_tail[-chunk:]
-            idx = raw.rfind(anchor)
-            if idx > 0:
-                candidate = clean_response(raw[idx + len(anchor):].strip())
-                if len(candidate) > 100:
-                    return candidate
+        # Fallback: use tail of the last gem output as an anchor
+        for key in ("gem3", "gem2", "gem1"):
+            tail = outputs.get(key, "").strip()
+            for chunk in (150, 80, 40):
+                anchor = tail[-chunk:]
+                if not anchor:
+                    continue
+                idx = raw.rfind(anchor)
+                if idx > 0:
+                    candidate = clean_response(raw[idx + len(anchor):].strip())
+                    if len(candidate) > 100:
+                        return candidate
 
-        # Last resort: strip everything up to and including the last section marker
-        for marker in reversed(SYNTHESIS_MARKERS):
-            if marker in raw:
-                candidate = clean_response(raw.split(marker, 1)[-1].strip())
-                # Skip to "Section" or any structured keyword in that tail
-                sec = re.search(r'\b(BLUF|Section\s*1|Bottom Line)\b', candidate, re.IGNORECASE)
-                if sec:
-                    return candidate[sec.start():]
-                return candidate
         return raw
 
     try:
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(3)
 
-        # Start a fresh Gem conversation so the system prompt is applied
         await activate_gem(page, name)
 
         prompt = synthesis_prompt(domain, flow, outputs)
         await send_message(page, name, prompt)
         await wait_for_response_complete(page, name)
 
-        response = await get_last_response_text(page)
+        # Always extract from full page text — the DOM scraper can't reliably
+        # distinguish the synthesis prompt (user turn) from the model response.
+        full_text = await page.inner_text("body")
+        response = extract_synthesiser_output(full_text)
 
-        # If the extraction picked up the synthesis prompt, recover using BLUF anchor
-        if any(m in response for m in SYNTHESIS_MARKERS) or len(response) < 200:
-            log(name, "⚠️  Response looks like prompt content — extracting via full page text")
+        # If BLUF wasn't found yet (page still rendering), wait and retry once
+        if not response or len(response) < 100:
+            log(name, "Response short — waiting 5s and retrying")
+            await asyncio.sleep(5)
             full_text = await page.inner_text("body")
-            response = extract_synthesiser_output(full_text)
-            if not response:
-                # Final attempt: re-extract after a short wait (page may still be rendering)
-                await asyncio.sleep(4)
-                full_text = await page.inner_text("body")
-                response = extract_synthesiser_output(full_text) or response
+            response = extract_synthesiser_output(full_text) or full_text
 
         log(name, f"Synthesis complete ({len(response)} chars)")
 
