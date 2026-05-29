@@ -132,12 +132,12 @@ async def get_last_response_text(page: Page) -> str:
     We try a prioritised list of strategies, from most-specific to broadest,
     and return the longest non-empty result found.
     """
-    # Strategy 1: walk known response container selectors via JS so we can
+    # Strategy 1: walk known MODEL response container selectors via JS so we can
     # reach into shadow roots and pick up all rendered text nodes.
     js_extract = """
     () => {
-        // Candidate container selectors in priority order
-        const containerSelectors = [
+        // Candidate MODEL container selectors in priority order
+        const modelSelectors = [
             'model-response',
             'ms-chat-turn[role="model"]',
             '.model-response-text',
@@ -151,12 +151,20 @@ async def get_last_response_text(page: Page) -> str:
             'message-content',
             '.response-content',
             '.model-response-text',
-            'p',   // last-resort: grab all paragraphs
+            'p',
+        ];
+
+        // User message selectors — we want to EXCLUDE these from fallback
+        const userSelectors = [
+            'user-query',
+            'ms-chat-turn[role="user"]',
+            '[data-turn-role="user"]',
+            'chat-turn-user',
         ];
 
         let best = '';
 
-        for (const containerSel of containerSelectors) {
+        for (const containerSel of modelSelectors) {
             const blocks = document.querySelectorAll(containerSel);
             if (!blocks.length) continue;
             const last = blocks[blocks.length - 1];
@@ -175,13 +183,39 @@ async def get_last_response_text(page: Page) -> str:
             if (best.length > 100) return best;  // good enough — stop searching
         }
 
-        // Strategy 2: look for the last large block of text in the page
-        // (catches cases where Gemini changes its component names)
+        // Collect the start of each user message so we can exclude it from the
+        // fallback search (the synthesis prompt is very long and would win otherwise)
+        const userPrefixes = new Set();
+        for (const sel of userSelectors) {
+            document.querySelectorAll(sel).forEach(el => {
+                const t = el.innerText ? el.innerText.trim() : '';
+                if (t.length > 30) userPrefixes.add(t.substring(0, 60));
+            });
+        }
+
+        // Strategy 2: look for the last large block of text in the page,
+        // explicitly excluding user turns and the synthesis prompt content
         if (best.length < 100) {
+            const PROMPT_MARKERS = [
+                '--- MINIMUM ACCEPTANCE CRITERIA OUTPUT ---',
+                '--- PATHWARD OUTPUT ---',
+                '--- CRB OUTPUT ---',
+                'Flow of funds:',
+            ];
             const allDivs = Array.from(document.querySelectorAll('div, section, article'));
             const candidates = allDivs
                 .map(el => el.innerText ? el.innerText.trim() : '')
-                .filter(t => t.length > 200);
+                .filter(t => {
+                    if (t.length < 200) return false;
+                    // Skip if it contains synthesis prompt markers
+                    if (PROMPT_MARKERS.some(m => t.includes(m))) return false;
+                    // Skip if it starts like a known user message
+                    const prefix = t.substring(0, 60);
+                    for (const up of userPrefixes) {
+                        if (up && prefix.startsWith(up.substring(0, 40))) return false;
+                    }
+                    return true;
+                });
             if (candidates.length) {
                 const longest = candidates.reduce((a, b) => a.length > b.length ? a : b, '');
                 if (longest.length > best.length) best = longest;
@@ -213,6 +247,11 @@ _UI_NOISE = re.compile(
     r"|Copy"
     r"|Thumbs up"
     r"|Thumbs down"
+    r"|Conversation with Gemini"
+    r"|You said"
+    r"|Gemini is AI and can make mistakes.*"
+    r"|Tools?"
+    r"|Flash"
     r")\s*$",
     re.IGNORECASE,
 )
