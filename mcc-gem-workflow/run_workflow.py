@@ -299,6 +299,24 @@ _UI_NOISE = re.compile(
     r"|Gemini is AI and can make mistakes.*"
     r"|Tools?"
     r"|Flash"
+    # Footer / disclaimer strings that appear around the response
+    r"|Opens in a new window"
+    r"|Google Terms"
+    r"|Google Privacy Policy"
+    r"|apply\..*"
+    r"|Something went wrong.*"
+    r"|Submit"
+    r"|New chat"
+    r"|Try this gem"
+    r"|Start chatting"
+    r"|New conversation"
+    r"|Run again"
+    r"|More options"
+    r"|Like"
+    r"|Dislike"
+    r"|Report"
+    r"|Retry"
+    r"|Rate this response.*"
     r")\s*$",
     re.IGNORECASE,
 )

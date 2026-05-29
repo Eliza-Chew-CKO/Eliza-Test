@@ -557,17 +557,22 @@ def index():
 
 @app.route("/raw/<run_id>")
 def raw_output(run_id: str):
-    """Return the raw synthesiser text captured for a given run — for debugging."""
     session = _sessions.get(run_id)
     if not session:
         return {"error": "run_id not found"}, 404
-    return Response(
-        f"=== RAW SYNTHESISER OUTPUT (run_id={run_id}) ===\n\n{session.get('final', '(empty)')}\n\n"
-        f"=== GEM 1 (MAC) ===\n\n{session.get('outputs', {}).get('gem1', '(empty)')}\n\n"
-        f"=== GEM 2 (Pathward) ===\n\n{session.get('outputs', {}).get('gem2', '(empty)')}\n\n"
-        f"=== GEM 3 (CRB) ===\n\n{session.get('outputs', {}).get('gem3', '(empty)')}\n",
-        mimetype="text/plain",
-    )
+    return Response(session.get("final", "(empty)"), mimetype="text/plain")
+
+
+@app.route("/raw/<run_id>/gem/<gem_key>")
+def raw_gem(run_id: str, gem_key: str):
+    session = _sessions.get(run_id)
+    if not session:
+        return {"error": "run_id not found"}, 404
+    if gem_key not in ("gem1", "gem2", "gem3"):
+        return {"error": "gem_key must be gem1/gem2/gem3"}, 400
+    names = {"gem1": "MAC (Minimum Acceptance Criteria)", "gem2": "Pathward", "gem3": "CRB"}
+    text = session.get("outputs", {}).get(gem_key, "(no output captured)")
+    return Response(f"=== {names[gem_key]} RAW OUTPUT ===\n\n{text}\n", mimetype="text/plain")
 
 
 @app.route("/run", methods=["POST"])

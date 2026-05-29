@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Check Me ⛏️</title>
+  <title>Check Me 💎</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💎</text></svg>">
   <style>
     :root {
       --bg:        #0a0b0c;   /* deep mine shaft */
@@ -388,6 +389,17 @@
     .btn-mcc-drill:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
     /* ── Iteration panel ── */
+    .raw-gem-btn {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-decoration: none;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 0.2rem 0.55rem;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .raw-gem-btn:hover { color: var(--accent-lt); border-color: var(--accent); }
     .iterate-panel {
       margin-top: 1.5rem;
       padding-top: 1.25rem;
@@ -809,8 +821,12 @@
       <span class="disambig-badge">Select Seam</span>
     </div>
     <div class="output-body" id="result-body"></div>
-    <div style="text-align:right;margin-top:0.5rem">
-      <a id="raw-link" href="#" target="_blank" style="font-size:0.75rem;color:var(--muted);text-decoration:none;opacity:0.6" title="View raw synthesiser text">📋 view raw output</a>
+    <div id="raw-links-bar" style="display:none;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.8rem;padding-top:0.6rem;border-top:1px solid var(--border)">
+      <span style="font-size:0.72rem;color:var(--muted);margin-right:0.2rem">Raw outputs:</span>
+      <a id="raw-link" href="#" target="_blank" class="raw-gem-btn">💎 Synthesiser</a>
+      <a id="raw-gem1-link" href="#" target="_blank" class="raw-gem-btn">🔬 MAC (Gem 1)</a>
+      <a id="raw-gem2-link" href="#" target="_blank" class="raw-gem-btn">🏦 Pathward (Gem 2)</a>
+      <a id="raw-gem3-link" href="#" target="_blank" class="raw-gem-btn">📊 CRB (Gem 3)</a>
     </div>
     <!-- MCC drill-down panel: shown when multiple MCCs are in the result -->
     <div class="mcc-drill-panel" id="mcc-drill-panel" style="display:none">
@@ -905,6 +921,15 @@
       progressLog.appendChild(row);
     }
 
+    function setRawLinks(runId) {
+      const bar = document.getElementById('raw-links-bar');
+      document.getElementById('raw-link').href      = '/raw/' + runId;
+      document.getElementById('raw-gem1-link').href = '/raw/' + runId + '/gem/gem1';
+      document.getElementById('raw-gem2-link').href = '/raw/' + runId + '/gem/gem2';
+      document.getElementById('raw-gem3-link').href = '/raw/' + runId + '/gem/gem3';
+      bar.style.display = 'flex';
+    }
+
     function renderMCCDrills(mccs) {
       const panel = document.getElementById('mcc-drill-panel');
       const btns  = document.getElementById('mcc-drill-buttons');
@@ -985,7 +1010,7 @@
               if (event.run_id) {
                 currentRunId = event.run_id;
                 document.getElementById('iterate-panel').style.display = 'block';
-                document.getElementById('raw-link').href = '/raw/' + event.run_id;
+                setRawLinks(event.run_id);
               }
             } else if (event.type === 'disambiguation') {
               finishLoadingBar();
@@ -997,7 +1022,7 @@
               resultCard.scrollIntoView({ behavior: 'smooth' });
               if (event.run_id) {
                 currentRunId = event.run_id;
-                document.getElementById('raw-link').href = '/raw/' + event.run_id;
+                setRawLinks(event.run_id);
               }
             } else if (event.type === 'done') {
               addStage('💎', 'Strike confirmed — assay complete.');
