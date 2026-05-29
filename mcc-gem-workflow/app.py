@@ -93,6 +93,71 @@ async def select_pro_model(page, gem_name: str) -> None:
     log(gem_name, "Pro model selection skipped (may already be set or unavailable)")
 
 
+def is_disambiguation(text: str) -> bool:
+    """Return True if Gem 4 output is an MCC disambiguation menu rather than a full report."""
+    lower = text.lower()
+    triggers = [
+        "disambiguation",
+        "please select",
+        "select an mcc",
+        "which mcc",
+        "multiple mcc",
+        "i must pause",
+        "must pause",
+        "before i proceed",
+        "before generating",
+    ]
+    if any(t in lower for t in triggers):
+        return True
+    # Also detect: numbered list where most items contain "mcc" or a 4-digit code
+    numbered = re.findall(r'^\s*(\d+)[.)]\s+(.+)$', text, re.MULTILINE)
+    if len(numbered) >= 2:
+        mcc_hits = sum(1 for _, item in numbered if re.search(r'\b\d{4}\b|mcc', item, re.IGNORECASE))
+        if mcc_hits >= len(numbered) * 0.5:
+            return True
+    return False
+
+
+def format_disambiguation_html(text: str) -> str:
+    """Render an MCC disambiguation menu as styled clickable option cards."""
+    lines = text.splitlines()
+    intro_lines, options, outro_lines = [], [], []
+    in_options = False
+
+    for line in lines:
+        stripped = line.strip()
+        m = re.match(r'^(\d+)[.)]\s+(.+)$', stripped)
+        if m:
+            in_options = True
+            options.append((m.group(1), m.group(2)))
+        elif in_options and stripped:
+            outro_lines.append(stripped)
+        elif not in_options and stripped:
+            intro_lines.append(stripped)
+
+    out = []
+    if intro_lines:
+        intro_html = ' '.join(re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', l) for l in intro_lines)
+        out.append(f'<div class="disambig-intro">{intro_html}</div>')
+
+    out.append('<div class="disambig-menu">')
+    for num, label in options:
+        label_html = MCC_RE.sub(r'<span class="mcc-badge">🏷️ \1</span>', label)
+        label_html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', label_html)
+        out.append(
+            f'<button class="disambig-option" onclick="selectMCC({num}, this)">'
+            f'<span class="disambig-num">{num}</span>'
+            f'<span class="disambig-label">{label_html}</span>'
+            f'</button>'
+        )
+    out.append('</div>')
+
+    if outro_lines:
+        out.append(f'<p class="disambig-outro">{" ".join(outro_lines)}</p>')
+
+    return '\n'.join(out)
+
+
 def format_html(text: str) -> str:
     """Convert Gem 4 output to structured HTML preserving BLUF/Section 1/2/3 layout."""
     lines = text.splitlines()
@@ -284,8 +349,11 @@ async def run_workflow_async(domain: str, flow: str, q: queue.Queue) -> None:
         raw_file = save_raw_outputs(domain, outputs, final)
         progress("save", f"Raw outputs saved to {raw_file}")
 
-        # Send final result
-        q.put({"type": "result", "html": format_html(final), "raw": final, "run_id": run_id})
+        # Detect disambiguation (Condition A) vs full report (Condition B)
+        if is_disambiguation(final):
+            q.put({"type": "disambiguation", "html": format_disambiguation_html(final), "raw": final, "run_id": run_id})
+        else:
+            q.put({"type": "result", "html": format_html(final), "raw": final, "run_id": run_id})
         q.put(None)  # sentinel
 
         await browser.close()
@@ -347,6 +415,61 @@ async def run_iteration_async(run_id: str, message: str, q: queue.Queue) -> None
 
 
 # ---------------------------------------------------------------------------
+# MCC selection (Condition A → Condition B)
+# ---------------------------------------------------------------------------
+
+async def run_mcc_selection_async(run_id: str, choice: str, q: queue.Queue) -> None:
+    session = _sessions.get(run_id)
+    if not session:
+        q.put({"type": "error", "msg": "Session expired. Please run a new Check."})
+        q.put(None)
+        return
+
+    def progress(msg: str) -> None:
+        q.put({"type": "log", "stage": "select", "msg": msg})
+
+    select_prompt = (
+        f"Domain: {session['domain']}\n"
+        f"Flow of funds: {session['flow']}\n\n"
+        f"The user has reviewed the disambiguation menu and selected option: {choice}\n\n"
+        "Please now generate the FULL underwriting report for the selected MCC, structured as:\n"
+        "BLUF — bottom line up front with Primary MCC, Risk Tier, and AFT Mandates\n"
+        "Section 1: Deal-Specific Supplemental Requirements\n"
+        "Section 2: Sales Rep Red Flags & Hard Requirements [INTERNAL ONLY]\n"
+        "Section 3: Standard MAF Items\n\n"
+        "Include Rationale and Merchant Framing where applicable."
+    )
+
+    async with async_playwright() as p:
+        chromium_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+        browser = await p.chromium.launch_persistent_context(
+            user_data_dir=PROFILE_DIR,
+            headless=not HEADED,
+            executable_path=chromium_path or None,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+        )
+
+        from run_workflow import GEMS, activate_gem, send_message, wait_for_response_complete, get_last_response_text, clean_response
+        page = await browser.new_page()
+        gem = GEMS["gem4"]
+        progress(f"Opening {gem['name']} for MCC selection…")
+        await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
+        await asyncio.sleep(3)
+        await activate_gem(page, gem["name"])
+        await send_message(page, gem["name"], select_prompt)
+        await wait_for_response_complete(page, gem["name"])
+        result = await get_last_response_text(page)
+        result = clean_response(result)
+        await page.close()
+        await browser.close()
+
+        _sessions[run_id]["final"] = result
+
+        q.put({"type": "result", "html": format_html(result), "raw": result, "run_id": run_id})
+        q.put(None)
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -397,6 +520,44 @@ def run():
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # disable nginx/proxy buffering
         },
+    )
+
+
+@app.route("/select_mcc", methods=["POST"])
+def select_mcc():
+    run_id = request.form.get("run_id", "").strip()
+    choice = request.form.get("choice", "").strip()  # e.g. "2" or full option text
+
+    if not run_id or not choice:
+        return {"error": "run_id and choice are required."}, 400
+
+    q: queue.Queue = queue.Queue()
+
+    def start():
+        try:
+            asyncio.run(run_mcc_selection_async(run_id, choice, q))
+        except Exception as e:
+            q.put({"type": "error", "msg": str(e)})
+            q.put(None)
+
+    threading.Thread(target=start, daemon=True).start()
+
+    def stream():
+        while True:
+            try:
+                item = q.get(timeout=15)
+            except queue.Empty:
+                yield ": keepalive\n\n"
+                continue
+            if item is None:
+                yield 'data: {"type": "done"}\n\n'
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    return Response(
+        stream_with_context(stream()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

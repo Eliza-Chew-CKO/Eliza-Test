@@ -317,6 +317,93 @@
     .iterate-result { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px dashed var(--border); }
     .iterate-result-header { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
 
+    /* ── MCC Disambiguation ── */
+    .disambig-intro {
+      background: #1e1b4b;
+      border: 1px solid #4f46e5;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      color: #a5b4fc;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 1.25rem;
+    }
+    .disambig-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      margin-bottom: 1rem;
+    }
+    .disambig-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.9rem;
+      padding: 0.85rem 1.1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--text);
+      font-size: 0.92rem;
+      font-family: inherit;
+      transition: border-color 0.2s, background 0.2s, transform 0.1s;
+    }
+    .disambig-option:hover {
+      border-color: var(--accent);
+      background: #1f2233;
+      transform: translateX(3px);
+    }
+    .disambig-option:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .disambig-option.selected {
+      border-color: var(--green);
+      background: #0f2318;
+    }
+    .disambig-num {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.82rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+    .disambig-label { flex: 1; line-height: 1.5; }
+    .disambig-outro {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      font-style: italic;
+    }
+    .disambig-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .disambig-card-header h2 { font-size: 1.1rem; font-weight: 700; }
+    .disambig-badge {
+      background: var(--yellow);
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 99px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
     /* ── Error ── */
     .error-msg {
       background: #2d1515;
@@ -369,10 +456,15 @@
 
   <!-- Result -->
   <div class="card" id="result-card">
-    <div class="result-header">
+    <div class="result-header" id="result-header">
       <span style="font-size:1.4rem">✅</span>
       <h2>Final Recommendation</h2>
       <span class="badge">Complete</span>
+    </div>
+    <div class="disambig-card-header" id="disambig-header" style="display:none">
+      <span style="font-size:1.4rem">🤔</span>
+      <h2>MCC Disambiguation Required</h2>
+      <span class="disambig-badge">Select MCC</span>
     </div>
     <div class="output-body" id="result-body"></div>
 
@@ -394,13 +486,15 @@
   <footer>Check Me · MCC Multi-Gem Workflow</footer>
 
   <script>
-    const form       = document.getElementById('check-form');
-    const submitBtn  = document.getElementById('submit-btn');
+    const form         = document.getElementById('check-form');
+    const submitBtn    = document.getElementById('submit-btn');
     const progressCard = document.getElementById('progress-card');
     const progressLog  = document.getElementById('progress-log');
     const resultCard   = document.getElementById('result-card');
     const resultBody   = document.getElementById('result-body');
     const errorMsg     = document.getElementById('error-msg');
+    const resultHeader = document.getElementById('result-header');
+    const disambigHeader = document.getElementById('disambig-header');
 
     let currentRunId = null;
 
@@ -474,12 +568,22 @@
               errorMsg.style.display = 'block';
             } else if (event.type === 'result') {
               resultBody.innerHTML = event.html;
+              resultHeader.style.display = 'flex';
+              disambigHeader.style.display = 'none';
               resultCard.style.display = 'block';
               resultCard.scrollIntoView({ behavior: 'smooth' });
               if (event.run_id) {
                 currentRunId = event.run_id;
                 document.getElementById('iterate-panel').style.display = 'block';
               }
+            } else if (event.type === 'disambiguation') {
+              resultBody.innerHTML = event.html;
+              resultHeader.style.display = 'none';
+              disambigHeader.style.display = 'flex';
+              document.getElementById('iterate-panel').style.display = 'none';
+              resultCard.style.display = 'block';
+              resultCard.scrollIntoView({ behavior: 'smooth' });
+              if (event.run_id) currentRunId = event.run_id;
             } else if (event.type === 'done') {
               addStage('🏁', 'Workflow complete.');
             }
@@ -561,6 +665,75 @@
         document.getElementById('btn-detail').disabled = false;
         document.getElementById('btn-addinfo').disabled = false;
         if (type === 'info') document.getElementById('iterate-text').value = '';
+      }
+    }
+    async function selectMCC(num, btnEl) {
+      if (!currentRunId) return;
+
+      // Mark selected button, disable all options
+      const allBtns = document.querySelectorAll('.disambig-option');
+      allBtns.forEach(b => { b.disabled = true; });
+      btnEl.classList.add('selected');
+
+      // Switch header to "loading" state
+      disambigHeader.innerHTML = `<span style="font-size:1.4rem">🧠</span><h2>Generating report for option ${num}…</h2><span class="disambig-badge">Working</span>`;
+
+      // Show spinner below menu
+      const spinner = document.createElement('div');
+      spinner.className = 'stage-row';
+      spinner.innerHTML = `<span class="stage-icon"><span class="spinner"></span></span><span class="stage-text">Synthesiser is building the full report…</span>`;
+      resultBody.appendChild(spinner);
+
+      const choiceText = btnEl.querySelector('.disambig-label').innerText;
+      const data = new FormData();
+      data.append('run_id', currentRunId);
+      data.append('choice', `${num}: ${choiceText}`);
+
+      try {
+        const response = await fetch('/select_mcc', { method: 'POST', body: data });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let gotResult = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event;
+            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+            if (event.type === 'log') {
+              spinner.querySelector('.stage-text').textContent = event.msg;
+            } else if (event.type === 'result') {
+              gotResult = true;
+              resultBody.innerHTML = event.html;
+              resultHeader.style.display = 'flex';
+              disambigHeader.style.display = 'none';
+              if (event.run_id) {
+                currentRunId = event.run_id;
+                document.getElementById('iterate-panel').style.display = 'block';
+              }
+              resultCard.scrollIntoView({ behavior: 'smooth' });
+            } else if (event.type === 'error') {
+              spinner.innerHTML = `<span style="color:var(--red)">⚠️ ${event.msg}</span>`;
+            }
+          }
+        }
+        if (!gotResult) {
+          allBtns.forEach(b => { b.disabled = false; });
+          btnEl.classList.remove('selected');
+          disambigHeader.innerHTML = `<span style="font-size:1.4rem">🤔</span><h2>MCC Disambiguation Required</h2><span class="disambig-badge">Select MCC</span>`;
+        }
+      } catch (err) {
+        resultBody.innerHTML += `<p style="color:var(--red);margin-top:1rem">⚠️ ${err.message}</p>`;
+        allBtns.forEach(b => { b.disabled = false; });
+        btnEl.classList.remove('selected');
       }
     }
   </script>
