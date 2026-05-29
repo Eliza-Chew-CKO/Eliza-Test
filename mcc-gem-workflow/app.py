@@ -350,10 +350,11 @@ async def run_workflow_async(domain: str, flow: str, q: queue.Queue) -> None:
         progress("save", f"Raw outputs saved to {raw_file}")
 
         # Detect disambiguation (Condition A) vs full report (Condition B)
+        mccs = sorted(set(MCC_RE.findall(final)))
         if is_disambiguation(final):
-            q.put({"type": "disambiguation", "html": format_disambiguation_html(final), "raw": final, "run_id": run_id})
+            q.put({"type": "disambiguation", "html": format_disambiguation_html(final), "raw": final, "run_id": run_id, "mccs": mccs})
         else:
-            q.put({"type": "result", "html": format_html(final), "raw": final, "run_id": run_id})
+            q.put({"type": "result", "html": format_html(final), "raw": final, "run_id": run_id, "mccs": mccs})
         q.put(None)  # sentinel
 
         await browser.close()
@@ -374,12 +375,10 @@ async def run_iteration_async(run_id: str, message: str, q: queue.Queue) -> None
         q.put({"type": "log", "stage": "iterate", "msg": msg})
 
     iter_prompt = (
-        f"Domain: {session['domain']}\n"
+        f"Merchant domain: {session['domain']}\n"
         f"Flow of funds: {session['flow']}\n\n"
-        f"Previous synthesis:\n{session['final']}\n\n"
-        f"---\n{message}\n\n"
-        "Please respond maintaining the same structure: BLUF, Section 1 (Deal-Specific Requirements), "
-        "Section 2 (Red Flags [INTERNAL ONLY]), Section 3 (Standard MAF Items)."
+        f"Previous synthesis output:\n{session['final']}\n\n"
+        f"---\nAdditional request: {message}"
     )
 
     async with async_playwright() as p:
@@ -410,7 +409,8 @@ async def run_iteration_async(run_id: str, message: str, q: queue.Queue) -> None
         # Update session with new synthesis
         _sessions[run_id]["final"] = result
 
-        q.put({"type": "result", "html": format_html(result), "raw": result, "run_id": run_id})
+        mccs_r = sorted(set(MCC_RE.findall(result)))
+        q.put({"type": "result", "html": format_html(result), "raw": result, "run_id": run_id, "mccs": mccs_r})
         q.put(None)
 
 
@@ -465,7 +465,8 @@ async def run_mcc_selection_async(run_id: str, choice: str, q: queue.Queue) -> N
 
         _sessions[run_id]["final"] = result
 
-        q.put({"type": "result", "html": format_html(result), "raw": result, "run_id": run_id})
+        mccs_r = sorted(set(MCC_RE.findall(result)))
+        q.put({"type": "result", "html": format_html(result), "raw": result, "run_id": run_id, "mccs": mccs_r})
         q.put(None)
 
 

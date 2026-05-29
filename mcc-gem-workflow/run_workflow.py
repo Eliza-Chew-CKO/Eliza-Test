@@ -84,6 +84,7 @@ FOLLOWUP_PROMPT = "What are the MCC codes for this merchant?"
 
 
 def synthesis_prompt(domain: str, flow: str, outputs: dict) -> str:
+    """Pass exact gem outputs to Gem 4 — let its system prompt dictate the format."""
     sections = []
     for key, info in [("gem1", GEMS["gem1"]), ("gem2", GEMS["gem2"]), ("gem3", GEMS["gem3"])]:
         sections.append(
@@ -93,14 +94,7 @@ def synthesis_prompt(domain: str, flow: str, outputs: dict) -> str:
     return (
         f"Merchant domain: {domain}\n\n"
         f"Flow of funds: {flow}\n\n"
-        f"{body}\n\n"
-        "---\n"
-        "Please synthesise the above outputs into a final recommendation including:\n"
-        "1. Final MCC code(s) — include multiple if required\n"
-        "2. Consensus summary — where did the gems agree or differ?\n"
-        "3. Justification for the final MCC selection\n"
-        "4. Consolidated required documentation checklist\n"
-        "5. Any risk flags or escalation notes"
+        f"{body}"
     )
 
 
