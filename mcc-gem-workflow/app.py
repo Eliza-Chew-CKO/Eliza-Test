@@ -285,6 +285,69 @@ def format_html(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Shared DOM helpers for pre-count / new-response extraction
+# ---------------------------------------------------------------------------
+
+_MODEL_SELS = [
+    "model-response",
+    "ms-chat-turn[role='model']",
+    "[data-turn-role='model']",
+    "chat-turn-model",
+]
+
+async def _pre_count_model_responses(page) -> tuple:
+    """Return (selector, count) of model-response elements currently on the page."""
+    for sel in _MODEL_SELS:
+        n = await page.evaluate(
+            f"() => document.querySelectorAll({repr(sel)}).length"
+        )
+        if n > 0:
+            return sel, n
+    return "", 0
+
+
+async def _get_new_model_response(page, pre_count_info) -> str:
+    """Get text of model responses that appeared after pre_count_info was taken."""
+    if isinstance(pre_count_info, tuple):
+        sel, count = pre_count_info
+    else:
+        sel, count = "", 0
+
+    if not sel:
+        # Try to find a working selector now
+        for s in _MODEL_SELS:
+            n = await page.evaluate(f"() => document.querySelectorAll({repr(s)}).length")
+            if n > 0:
+                sel, count = s, 0  # take all since we have no pre-count
+                break
+
+    if not sel:
+        return ""
+
+    from run_workflow import clean_response
+    raw = await page.evaluate(
+        """([sel, preCount]) => {
+            const getText = el => {
+                if (!el) return '';
+                const inner = el.querySelector(
+                    '.markdown, message-content, .response-content, .model-response-text'
+                );
+                return (inner || el).innerText.trim();
+            };
+            const blocks = Array.from(document.querySelectorAll(sel));
+            const newBlocks = blocks.slice(preCount);
+            if (newBlocks.length > 0) {
+                return newBlocks.map(getText).filter(t => t.length > 30).join('\\n\\n');
+            }
+            // fallback: last block
+            return blocks.length > 0 ? getText(blocks[blocks.length - 1]) : '';
+        }""",
+        [sel, count],
+    )
+    return clean_response(raw) if raw else ""
+
+
+# ---------------------------------------------------------------------------
 # Async workflow with queue-based progress reporting
 # ---------------------------------------------------------------------------
 
@@ -397,19 +460,19 @@ async def run_iteration_async(run_id: str, message: str, q: queue.Queue) -> None
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(3)
 
-        from run_workflow import activate_gem, send_message, wait_for_response_complete, get_last_response_text, clean_response
+        from run_workflow import activate_gem, send_message, wait_for_response_complete, clean_response
         await activate_gem(page, gem["name"])
+
+        # Pre-count model responses before sending
+        pre_count = await _pre_count_model_responses(page)
         await send_message(page, gem["name"], iter_prompt)
         await wait_for_response_complete(page, gem["name"])
-        result = await get_last_response_text(page)
-        result = clean_response(result)
+        result = await _get_new_model_response(page, pre_count)
 
-        # Gem 4 output always begins with BLUF — anchor on that if we got back garbage
-        if not re.search(r'\bBLUF\b', result, re.IGNORECASE) or len(result) < 150:
+        if not result or len(result) < 150:
             full_text = await page.inner_text("body")
             m = re.search(r'\bBLUF\b', full_text, re.IGNORECASE)
-            if m:
-                result = clean_response(full_text[m.start():].strip())
+            result = clean_response(full_text[m.start():].strip()) if m else result or full_text
 
         await page.close()
         await browser.close()
@@ -455,23 +518,23 @@ async def run_mcc_selection_async(run_id: str, choice: str, q: queue.Queue) -> N
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
         )
 
-        from run_workflow import GEMS, activate_gem, send_message, wait_for_response_complete, get_last_response_text, clean_response
+        from run_workflow import GEMS, activate_gem, send_message, wait_for_response_complete, clean_response
         page = await browser.new_page()
         gem = GEMS["gem4"]
         progress(f"Opening {gem['name']} for MCC selection…")
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(3)
         await activate_gem(page, gem["name"])
+
+        pre_count = await _pre_count_model_responses(page)
         await send_message(page, gem["name"], select_prompt)
         await wait_for_response_complete(page, gem["name"])
-        result = await get_last_response_text(page)
-        result = clean_response(result)
+        result = await _get_new_model_response(page, pre_count)
 
-        if not re.search(r'\bBLUF\b', result, re.IGNORECASE) or len(result) < 150:
+        if not result or len(result) < 150:
             full_text = await page.inner_text("body")
             m = re.search(r'\bBLUF\b', full_text, re.IGNORECASE)
-            if m:
-                result = clean_response(full_text[m.start():].strip())
+            result = clean_response(full_text[m.start():].strip()) if m else result or full_text
 
         await page.close()
         await browser.close()

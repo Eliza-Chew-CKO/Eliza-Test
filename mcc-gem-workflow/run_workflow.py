@@ -459,18 +459,68 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
     page = await context.new_page()
     log(name, f"Opening {gem['url']}")
 
-    PROMPT_ANCHORS = ["MAC bot:", "CRB bot:", "Pathward bot:"]
+    # JS helper: get innerText from a model-response element, trying
+    # the inner markdown container first so we skip any UI chrome.
+    _GET_TEXT_JS = """
+    (el) => {
+        if (!el) return '';
+        const inner = el.querySelector(
+            '.markdown, message-content, .response-content, .model-response-text'
+        );
+        return (inner || el).innerText.trim();
+    }
+    """
 
-    def extract_synthesiser_output(raw: str) -> str:
-        """
-        Gem 4 always starts its output with BLUF — gems 1-3 never do.
-        Anchor on the first BLUF occurrence in the page text.
-        """
+    # All known selectors for model-response containers across Gemini UI versions
+    MODEL_SELS = [
+        "model-response",
+        "ms-chat-turn[role='model']",
+        "[data-turn-role='model']",
+        "chat-turn-model",
+    ]
+
+    async def count_model_responses() -> tuple[str, int]:
+        """Return (working_selector, current_count) for the first matching selector."""
+        for sel in MODEL_SELS:
+            n = await page.evaluate(
+                f"() => document.querySelectorAll({repr(sel)}).length"
+            )
+            if n > 0:
+                return sel, n
+        return "", 0
+
+    async def get_new_response(sel: str, pre_count: int) -> str:
+        """Get text of model responses added after pre_count."""
+        if not sel:
+            return ""
+        return await page.evaluate(
+            """([sel, preCount, getTextSrc]) => {
+                const getEl = new Function('el', 'return ' + getTextSrc + '(el)');
+                // We can't pass the function directly; inline the logic
+                const getText = el => {
+                    if (!el) return '';
+                    const inner = el.querySelector(
+                        '.markdown, message-content, .response-content, .model-response-text'
+                    );
+                    return (inner || el).innerText.trim();
+                };
+                const blocks = Array.from(document.querySelectorAll(sel));
+                const newBlocks = blocks.slice(preCount);
+                if (newBlocks.length > 0) {
+                    return newBlocks.map(getText).filter(t => t.length > 30).join('\\n\\n');
+                }
+                // fallback: last block regardless
+                return blocks.length > 0 ? getText(blocks[blocks.length - 1]) : '';
+            }""",
+            [sel, pre_count, ""],
+        )
+
+    def bluf_anchor(raw: str) -> str:
+        """Find BLUF in page text and return everything from there."""
         m = re.search(r'\bBLUF\b', raw, re.IGNORECASE)
         if m:
             return clean_response(raw[m.start():].strip())
-
-        # Fallback: use tail of the last gem output as an anchor
+        # Fallback: tail of last gem output as anchor
         for key in ("gem3", "gem2", "gem1"):
             tail = outputs.get(key, "").strip()
             for chunk in (150, 80, 40):
@@ -482,8 +532,7 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
                     candidate = clean_response(raw[idx + len(anchor):].strip())
                     if len(candidate) > 100:
                         return candidate
-
-        return raw
+        return ""
 
     try:
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
@@ -491,29 +540,46 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
 
         await activate_gem(page, name)
 
+        # ── PRE-COUNT: record how many model responses exist before we send ──
+        sel, pre_count = await count_model_responses()
+        log(name, f"Pre-send model responses: sel={sel!r} count={pre_count}")
+
         prompt = synthesis_prompt(domain, flow, outputs)
         await send_message(page, name, prompt)
         await wait_for_response_complete(page, name)
 
-        # Always extract from full page text — the DOM scraper can't reliably
-        # distinguish the synthesis prompt (user turn) from the model response.
-        full_text = await page.inner_text("body")
-        response = extract_synthesiser_output(full_text)
+        # ── STRATEGY 1: get ONLY the newly-appeared model response element ──
+        response = ""
+        if sel:
+            raw_new = await get_new_response(sel, pre_count)
+            response = clean_response(raw_new) if raw_new else ""
+            log(name, f"Strategy 1 (pre-count delta): {len(response)} chars")
 
-        # If BLUF wasn't found yet (page still rendering), wait and retry once
-        if not response or len(response) < 100:
-            log(name, "Response short — waiting 5s and retrying")
-            await asyncio.sleep(5)
+        # ── STRATEGY 2: BLUF anchor on full page text ──────────────────────
+        if not response or len(response) < 150:
+            log(name, "Trying BLUF anchor on full page text")
             full_text = await page.inner_text("body")
-            response = extract_synthesiser_output(full_text) or full_text
+            response = bluf_anchor(full_text) or response
+
+        # ── STRATEGY 3: wait 5 s and retry both ───────────────────────────
+        if not response or len(response) < 150:
+            log(name, "Short response — waiting 5s and retrying")
+            await asyncio.sleep(5)
+            if sel:
+                raw_new = await get_new_response(sel, pre_count)
+                response = clean_response(raw_new) if raw_new else response
+            if not response or len(response) < 150:
+                full_text = await page.inner_text("body")
+                response = bluf_anchor(full_text) or response or full_text
 
         log(name, f"Synthesis complete ({len(response)} chars)")
 
-        # Save synthesiser HTML for diagnosis
+        # Save synthesiser page HTML + extracted text separately for diagnosis
         ts = datetime.now().strftime("%H%M%S")
         try:
             Path(f"debug_synthesiser_{ts}.html").write_text(await page.content(), encoding="utf-8")
-            log(name, f"Synthesiser page HTML saved (debug_synthesiser_{ts}.html)")
+            Path(f"synthesiser_output_{ts}.txt").write_text(response, encoding="utf-8")
+            log(name, f"Synthesiser files saved: debug_synthesiser_{ts}.html / synthesiser_output_{ts}.txt")
         except Exception:
             pass
 
