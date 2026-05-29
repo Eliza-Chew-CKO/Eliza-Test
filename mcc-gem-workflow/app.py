@@ -403,12 +403,18 @@ async def run_iteration_async(run_id: str, message: str, q: queue.Queue) -> None
         await wait_for_response_complete(page, gem["name"])
         result = await get_last_response_text(page)
         result = clean_response(result)
+
+        # Gem 4 output always begins with BLUF — anchor on that if we got back garbage
+        if not re.search(r'\bBLUF\b', result, re.IGNORECASE) or len(result) < 150:
+            full_text = await page.inner_text("body")
+            m = re.search(r'\bBLUF\b', full_text, re.IGNORECASE)
+            if m:
+                result = clean_response(full_text[m.start():].strip())
+
         await page.close()
         await browser.close()
 
-        # Update session with new synthesis
         _sessions[run_id]["final"] = result
-
         mccs_r = sorted(set(MCC_RE.findall(result)))
         q.put({"type": "result", "html": format_html(result), "raw": result, "run_id": run_id, "mccs": mccs_r})
         q.put(None)
@@ -460,6 +466,13 @@ async def run_mcc_selection_async(run_id: str, choice: str, q: queue.Queue) -> N
         await wait_for_response_complete(page, gem["name"])
         result = await get_last_response_text(page)
         result = clean_response(result)
+
+        if not re.search(r'\bBLUF\b', result, re.IGNORECASE) or len(result) < 150:
+            full_text = await page.inner_text("body")
+            m = re.search(r'\bBLUF\b', full_text, re.IGNORECASE)
+            if m:
+                result = clean_response(full_text[m.start():].strip())
+
         await page.close()
         await browser.close()
 

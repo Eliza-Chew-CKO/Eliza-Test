@@ -3,22 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Check Me 💎</title>
+  <title>Check Me ⛏️</title>
   <style>
     :root {
-      --bg:        #0f1117;
-      --surface:   #1a1d27;
-      --border:    #2a2d3a;
-      --accent:    #6c63ff;
-      --accent-lt: #8b85ff;
-      --green:     #22c55e;
-      --yellow:    #f59e0b;
-      --red:       #ef4444;
-      --text:      #e2e8f0;
-      --muted:     #64748b;
-      --mcc-bg:    #1e3a2f;
-      --mcc-text:  #4ade80;
-      --radius:    12px;
+      --bg:        #0a0b0c;   /* deep mine shaft */
+      --surface:   #141618;   /* rock face */
+      --surface2:  #1c1f21;   /* lighter stone */
+      --border:    #2c3033;   /* rock seam */
+      --accent:    #d97706;   /* gold vein */
+      --accent-lt: #f59e0b;   /* bright gold */
+      --green:     #65a30d;   /* emerald ore */
+      --green-lt:  #84cc16;
+      --yellow:    #ca8a04;   /* amber */
+      --red:       #dc2626;
+      --red-lt:    #f87171;
+      --text:      #e5e7eb;
+      --muted:     #6b7280;
+      --mcc-bg:    #1a220e;
+      --mcc-text:  #a3e635;
+      --radius:    10px;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,6 +32,9 @@
       color: var(--text);
       min-height: 100vh;
       padding: 2rem 1rem;
+      background-image:
+        radial-gradient(ellipse at 20% 0%, #1a1206 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, #0d1a08 0%, transparent 50%);
     }
 
     /* ── Header ── */
@@ -36,19 +42,29 @@
       text-align: center;
       margin-bottom: 2.5rem;
     }
-    header .logo { font-size: 2.8rem; margin-bottom: 0.25rem; }
+    header .logo { font-size: 3rem; margin-bottom: 0.3rem; filter: drop-shadow(0 0 12px #d9770660); }
     header h1 {
-      font-size: 2rem;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      background: linear-gradient(135deg, var(--accent-lt), var(--green));
+      font-size: 2.2rem;
+      font-weight: 900;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #f59e0b, #fcd34d, #d97706);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+      text-shadow: none;
     }
-    header p {
+    header .tagline {
       color: var(--muted);
-      margin-top: 0.4rem;
-      font-size: 0.95rem;
+      margin-top: 0.35rem;
+      font-size: 0.88rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .vein-divider {
+      width: 120px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      margin: 0.75rem auto 0;
+      border-radius: 99px;
     }
 
     /* ── Card ── */
@@ -57,16 +73,34 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 1.75rem;
-      max-width: 760px;
+      max-width: 780px;
       margin: 0 auto 1.5rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--border), transparent);
     }
 
     /* ── Form ── */
     label {
       display: block;
-      font-size: 0.8rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
       margin-bottom: 0.4rem;
@@ -79,79 +113,90 @@
       border-radius: 8px;
       color: var(--text);
       font-size: 0.95rem;
-      padding: 0.7rem 0.9rem;
+      padding: 0.72rem 1rem;
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
       font-family: inherit;
     }
     input[type="url"]:focus,
-    textarea:focus { border-color: var(--accent); }
-    textarea { resize: vertical; min-height: 110px; line-height: 1.5; }
-
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px #d9770620;
+    }
+    textarea { resize: vertical; min-height: 110px; line-height: 1.55; }
     .field { margin-bottom: 1.25rem; }
 
     button[type="submit"] {
       width: 100%;
-      padding: 0.85rem;
-      background: var(--accent);
-      color: #fff;
+      padding: 0.9rem;
+      background: linear-gradient(135deg, #b45309, #d97706, #f59e0b);
+      color: #1a0e00;
       font-size: 1rem;
-      font-weight: 700;
+      font-weight: 800;
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      transition: background 0.2s, opacity 0.2s;
-      letter-spacing: 0.02em;
+      transition: opacity 0.2s, transform 0.1s;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
-    button[type="submit"]:hover { background: var(--accent-lt); }
-    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+    button[type="submit"]:hover { opacity: 0.9; transform: translateY(-1px); }
+    button[type="submit"]:active { transform: translateY(0); }
+    button[type="submit"]:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-    /* ── Loading bar ── */
+    /* ── Loading bar (mine shaft depth meter) ── */
+    .shaft-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.4rem;
+    }
     .loading-bar-wrap {
-      background: var(--border);
-      border-radius: 99px;
-      height: 6px;
+      background: #0a0b0c;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      height: 10px;
       overflow: hidden;
-      margin: 0.75rem 0 0.25rem;
+      margin: 0.35rem 0 0.3rem;
+      position: relative;
+    }
+    .loading-bar-wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent 0px, transparent 18px,
+        #ffffff08 18px, #ffffff08 20px
+      );
     }
     .loading-bar-fill {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, var(--accent), var(--green));
-      border-radius: 99px;
+      background: linear-gradient(90deg, #92400e, #d97706, #fcd34d);
+      border-radius: 3px;
       transition: width 1s linear;
+      position: relative;
+    }
+    .loading-bar-fill::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 20px;
+      background: linear-gradient(90deg, transparent, #fef3c780);
+      border-radius: 0 3px 3px 0;
     }
     .loading-eta {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--muted);
       text-align: right;
       margin-bottom: 0.75rem;
+      font-variant-numeric: tabular-nums;
     }
 
-    /* ── MCC drill-down ── */
-    .mcc-drill-panel {
-      margin-top: 1.5rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid var(--border);
-    }
-    .mcc-drill-panel h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 0.75rem; font-weight: 600; }
-    .mcc-drill-buttons { display: flex; gap: 0.65rem; flex-wrap: wrap; }
-    .btn-mcc-drill {
-      padding: 0.5rem 1rem;
-      background: var(--mcc-bg);
-      border: 1px solid #22c55e55;
-      border-radius: 8px;
-      color: var(--mcc-text);
-      font-size: 0.88rem;
-      font-weight: 700;
-      cursor: pointer;
-      font-family: inherit;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .btn-mcc-drill:hover { border-color: var(--green); background: #163d24; }
-    .btn-mcc-drill:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* ── Progress ── */
+    /* ── Progress log ── */
     #progress-card { display: none; }
     .stage-row {
       display: flex;
@@ -159,23 +204,25 @@
       gap: 0.75rem;
       margin-bottom: 0.6rem;
     }
-    .stage-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .stage-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
     .stage-text { color: var(--text); font-size: 0.92rem; line-height: 1.5; }
     .log-row {
       padding-left: 1.85rem;
       color: var(--muted);
-      font-size: 0.82rem;
-      margin-bottom: 0.25rem;
+      font-size: 0.8rem;
+      margin-bottom: 0.22rem;
+      font-variant-numeric: tabular-nums;
     }
+    .log-row::before { content: '▸ '; color: var(--border); }
     .spinner {
       display: inline-block;
-      width: 14px; height: 14px;
+      width: 13px; height: 13px;
       border: 2px solid var(--border);
       border-top-color: var(--accent);
       border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+      animation: spin 0.75s linear infinite;
       vertical-align: middle;
-      margin-right: 6px;
+      margin-right: 5px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -184,20 +231,20 @@
     .result-header {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
+      gap: 0.65rem;
       margin-bottom: 1.25rem;
       padding-bottom: 1rem;
       border-bottom: 1px solid var(--border);
     }
-    .result-header h2 { font-size: 1.2rem; font-weight: 700; }
+    .result-header h2 { font-size: 1.15rem; font-weight: 800; color: var(--accent-lt); }
     .result-header .badge {
-      background: var(--green);
-      color: #000;
-      font-size: 0.7rem;
+      background: linear-gradient(135deg, #b45309, #d97706);
+      color: #1a0e00;
+      font-size: 0.68rem;
       font-weight: 800;
-      padding: 2px 8px;
+      padding: 2px 9px;
       border-radius: 99px;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
@@ -206,143 +253,168 @@
     .output-body p { margin-bottom: 0.5rem; color: var(--text); }
     .output-body .spacer { height: 0.5rem; }
 
-    .output-body h2.caps-heading {
-      font-size: 1rem;
+    .output-body h3.caps-heading {
+      font-size: 0.92rem;
       font-weight: 800;
       color: var(--accent-lt);
-      margin: 1.5rem 0 0.5rem;
+      margin: 1.4rem 0 0.4rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .output-body h3.section-heading {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: var(--yellow);
-      margin: 1.25rem 0 0.4rem;
+      letter-spacing: 0.06em;
     }
 
     .output-body .mcc-line {
       background: var(--mcc-bg);
-      border-left: 3px solid var(--green);
+      border-left: 3px solid var(--green-lt);
       border-radius: 6px;
-      padding: 0.5rem 0.75rem;
+      padding: 0.5rem 0.8rem;
       margin: 0.4rem 0;
       color: var(--mcc-text);
     }
     .mcc-badge {
       background: var(--green);
-      color: #000;
+      color: #fff;
       font-weight: 800;
       border-radius: 4px;
       padding: 1px 6px;
-      font-size: 0.88rem;
+      font-size: 0.85rem;
+      letter-spacing: 0.03em;
     }
 
-    .output-body li {
-      margin-left: 1.25rem;
-      margin-bottom: 0.3rem;
-      color: var(--text);
-    }
+    .output-body li { margin-left: 1.25rem; margin-bottom: 0.3rem; color: var(--text); }
     .output-body ul { margin-bottom: 0.5rem; }
+    .output-body .numbered-item { padding-left: 0.25rem; margin-bottom: 0.35rem; }
 
-    .output-body .numbered-item {
-      padding-left: 0.25rem;
-      margin-bottom: 0.35rem;
-    }
-
-    /* BLUF */
+    /* BLUF — gold ore seam */
     .bluf-banner {
-      background: linear-gradient(135deg, #1e1b4b, #312e81);
-      border: 1px solid #4f46e5;
+      background: linear-gradient(135deg, #1c1100, #2d1c00);
+      border: 1px solid #92400e;
+      border-left: 4px solid var(--accent-lt);
       border-radius: 10px;
-      padding: 0.8rem 1.1rem;
+      padding: 0.9rem 1.15rem;
       font-size: 1.05rem;
       font-weight: 800;
-      color: #a5b4fc;
+      color: #fcd34d;
       margin-bottom: 1rem;
       letter-spacing: 0.02em;
+      text-shadow: 0 0 20px #f59e0b40;
     }
     .bluf-item {
-      background: var(--surface);
-      border-left: 3px solid #6c63ff;
+      background: #110d00;
+      border-left: 3px solid var(--accent);
       border-radius: 0 8px 8px 0;
       padding: 0.55rem 0.9rem;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.45rem;
     }
     .bluf-key { color: var(--accent-lt); font-weight: 700; }
     .bluf-val { color: var(--text); }
 
     /* Section headers */
     .section-header {
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 800;
-      padding: 0.6rem 1rem;
+      padding: 0.65rem 1rem;
       border-radius: 8px;
       margin: 1.5rem 0 0.75rem;
       letter-spacing: 0.03em;
     }
-    .section-1 { background: #1a2744; border-left: 4px solid #60a5fa; color: #93c5fd; }
-    .section-2 { background: #2d1515; border-left: 4px solid #ef4444; color: #fca5a5; }
-    .section-3 { background: #1a2a1a; border-left: 4px solid #4ade80; color: #86efac; }
+    /* Section 1: coal seam blue */
+    .section-1 { background: #0d1929; border-left: 4px solid #3b82f6; color: #93c5fd; }
+    /* Section 2: danger red */
+    .section-2 { background: #1f0808; border-left: 4px solid #ef4444; color: #fca5a5; }
+    /* Section 3: emerald ore */
+    .section-3 { background: #0a150a; border-left: 4px solid #65a30d; color: #a3e635; }
 
     /* Rationale / Merchant Framing */
     .rationale-block {
-      background: #1e2535;
+      background: #111308;
       border-radius: 6px;
       padding: 0.5rem 0.85rem;
       margin: 0.4rem 0;
       font-size: 0.88rem;
-      color: #94a3b8;
+      color: #9ca3af;
     }
     .rationale-label { color: var(--yellow); font-weight: 700; }
     .merchant-framing { margin: 0.5rem 0 0.75rem; }
-    .mf-label { color: var(--green); font-weight: 700; font-size: 0.88rem; }
+    .mf-label { color: var(--green-lt); font-weight: 700; font-size: 0.88rem; }
     .mf-quote {
       border-left: 3px solid var(--green);
       margin: 0.35rem 0 0 0.5rem;
       padding: 0.4rem 0.75rem;
-      color: #cbd5e1;
+      color: #d1d5db;
       font-style: italic;
       font-size: 0.9rem;
-      background: #0f2318;
+      background: #0a120a;
       border-radius: 0 6px 6px 0;
     }
 
-    /* Red flag items in section 2 */
-    li.red-flag-item {
-      color: #fca5a5;
-      font-weight: 500;
-    }
-    li.red-flag-item::marker { color: #ef4444; }
+    li.red-flag-item { color: var(--red-lt); font-weight: 500; }
+    li.red-flag-item::marker { color: var(--red); }
 
-    /* Sub-headings */
     h4.sub-heading {
       color: var(--yellow);
-      font-size: 0.92rem;
+      font-size: 0.91rem;
       font-weight: 700;
       margin: 1rem 0 0.35rem;
     }
-    h3.caps-heading { color: var(--accent-lt); font-size: 0.95rem; font-weight: 800; margin: 1.2rem 0 0.4rem; }
 
-    /* Iteration panel */
+    /* ── MCC drill-down (ore veins) ── */
+    .mcc-drill-panel {
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .mcc-drill-panel h3 {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.8rem;
+    }
+    .mcc-drill-buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+    .btn-mcc-drill {
+      padding: 0.45rem 1rem;
+      background: var(--mcc-bg);
+      border: 1px solid #65a30d55;
+      border-radius: 6px;
+      color: var(--mcc-text);
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 0.2s, background 0.2s, transform 0.15s;
+    }
+    .btn-mcc-drill:hover { border-color: var(--green-lt); background: #1f2f0d; transform: translateY(-2px); }
+    .btn-mcc-drill:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── Iteration panel ── */
     .iterate-panel {
       margin-top: 1.5rem;
       padding-top: 1.25rem;
       border-top: 1px solid var(--border);
     }
-    .iterate-panel h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 0.85rem; font-weight: 600; }
-    .iterate-buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .iterate-panel h3 {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.85rem;
+    }
+    .iterate-buttons { display: flex; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 1rem; }
     .btn-secondary {
       padding: 0.55rem 1rem;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface);
+      border-radius: 7px;
+      background: var(--surface2);
       color: var(--text);
-      font-size: 0.88rem;
+      font-size: 0.87rem;
       cursor: pointer;
+      font-family: inherit;
       transition: border-color 0.2s, background 0.2s;
     }
-    .btn-secondary:hover { border-color: var(--accent); background: #1f2233; }
+    .btn-secondary:hover { border-color: var(--accent); background: #1e1608; }
+    .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
     .iterate-input { display: none; margin-top: 0.75rem; }
     .iterate-input textarea {
       width: 100%;
@@ -358,63 +430,53 @@
       font-family: inherit;
       margin-bottom: 0.6rem;
     }
-    .iterate-input textarea:focus { border-color: var(--accent); }
+    .iterate-input textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #d9770620; }
     .iterate-result { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px dashed var(--border); }
-    .iterate-result-header { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+    .iterate-result-header {
+      font-size: 0.72rem;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
 
-    /* ── MCC Disambiguation ── */
+    /* ── MCC Disambiguation (vein selection) ── */
     .disambig-intro {
-      background: #1e1b4b;
-      border: 1px solid #4f46e5;
+      background: #130f00;
+      border: 1px solid #92400e;
       border-radius: 10px;
       padding: 1rem 1.25rem;
-      color: #a5b4fc;
-      font-size: 0.95rem;
+      color: #fcd34d;
+      font-size: 0.93rem;
       line-height: 1.6;
       margin-bottom: 1.25rem;
     }
-    .disambig-menu {
-      display: flex;
-      flex-direction: column;
-      gap: 0.65rem;
-      margin-bottom: 1rem;
-    }
+    .disambig-menu { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1rem; }
     .disambig-option {
       display: flex;
       align-items: flex-start;
       gap: 0.9rem;
       padding: 0.85rem 1.1rem;
-      background: var(--surface);
+      background: var(--surface2);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 9px;
       cursor: pointer;
       text-align: left;
       color: var(--text);
       font-size: 0.92rem;
       font-family: inherit;
-      transition: border-color 0.2s, background 0.2s, transform 0.1s;
+      transition: border-color 0.2s, background 0.15s, transform 0.1s;
     }
-    .disambig-option:hover {
-      border-color: var(--accent);
-      background: #1f2233;
-      transform: translateX(3px);
-    }
-    .disambig-option:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
-    .disambig-option.selected {
-      border-color: var(--green);
-      background: #0f2318;
-    }
+    .disambig-option:hover { border-color: var(--accent); background: #1e1608; transform: translateX(4px); }
+    .disambig-option:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .disambig-option.selected { border-color: var(--green); background: #0a1208; }
     .disambig-num {
       flex-shrink: 0;
-      width: 26px;
-      height: 26px;
-      background: var(--accent);
-      color: #fff;
-      font-weight: 800;
+      width: 26px; height: 26px;
+      background: linear-gradient(135deg, #92400e, #d97706);
+      color: #1a0e00;
+      font-weight: 900;
       font-size: 0.82rem;
       border-radius: 50%;
       display: flex;
@@ -423,37 +485,25 @@
       margin-top: 1px;
     }
     .disambig-label { flex: 1; line-height: 1.5; }
-    .disambig-outro {
-      color: var(--muted);
-      font-size: 0.85rem;
-      margin-top: 0.5rem;
-      font-style: italic;
-    }
+    .disambig-outro { color: var(--muted); font-size: 0.84rem; margin-top: 0.5rem; font-style: italic; }
     .disambig-card-header {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      margin-bottom: 1rem;
-      padding-bottom: 0.85rem;
+      display: flex; align-items: center; gap: 0.65rem;
+      margin-bottom: 1rem; padding-bottom: 0.85rem;
       border-bottom: 1px solid var(--border);
     }
-    .disambig-card-header h2 { font-size: 1.1rem; font-weight: 700; }
+    .disambig-card-header h2 { font-size: 1.1rem; font-weight: 800; color: #fcd34d; }
     .disambig-badge {
-      background: var(--yellow);
-      color: #000;
-      font-size: 0.7rem;
-      font-weight: 800;
-      padding: 2px 8px;
-      border-radius: 99px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+      background: var(--yellow); color: #1a0e00;
+      font-size: 0.68rem; font-weight: 800;
+      padding: 2px 8px; border-radius: 99px;
+      letter-spacing: 0.07em; text-transform: uppercase;
     }
 
     /* ── Error ── */
     .error-msg {
-      background: #2d1515;
+      background: #1f0808;
       border: 1px solid var(--red);
-      color: #fca5a5;
+      color: var(--red-lt);
       border-radius: 8px;
       padding: 0.75rem 1rem;
       font-size: 0.9rem;
@@ -465,77 +515,82 @@
     footer {
       text-align: center;
       color: var(--muted);
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       margin-top: 2rem;
+      letter-spacing: 0.04em;
     }
   </style>
 </head>
 <body>
 
   <header>
-    <div class="logo">💎</div>
+    <div class="logo">⛏️</div>
     <h1>Check Me</h1>
-    <p>MCC classification &amp; onboarding requirements — powered by 4 AI specialists</p>
+    <p class="tagline">MCC Prospector · Powered by 4 AI Specialist Gems</p>
+    <div class="vein-divider"></div>
   </header>
 
   <!-- Input form -->
   <div class="card">
+    <div class="card-title">⛏️ New Prospect</div>
     <form id="check-form">
       <div class="field">
         <label for="domain">🌐 Merchant Domain</label>
         <input type="url" id="domain" name="domain" placeholder="https://example.com" required />
       </div>
       <div class="field">
-        <label for="flow">💸 Flow of Funds</label>
+        <label for="flow">💰 Flow of Funds</label>
         <textarea id="flow" name="flow" placeholder="Describe how money moves through the business — e.g. consumer pays platform, platform pays seller minus 10% fee, weekly payouts via bank transfer." required></textarea>
       </div>
-      <button type="submit" id="submit-btn">🔍 Run Check</button>
+      <button type="submit" id="submit-btn">⛏️ Begin Prospecting</button>
       <div class="error-msg" id="error-msg"></div>
     </form>
   </div>
 
   <!-- Progress -->
   <div class="card" id="progress-card">
+    <div class="card-title">🪨 Mining in Progress</div>
+    <div class="shaft-label">⬇ Shaft Depth</div>
     <div class="loading-bar-wrap"><div class="loading-bar-fill" id="loading-bar"></div></div>
-    <div class="loading-eta" id="loading-eta">Estimating time…</div>
+    <div class="loading-eta" id="loading-eta">Calculating depth…</div>
     <div id="progress-log"></div>
   </div>
 
   <!-- Result -->
   <div class="card" id="result-card">
     <div class="result-header" id="result-header">
-      <span style="font-size:1.4rem">✅</span>
-      <h2>Final Recommendation</h2>
-      <span class="badge">Complete</span>
+      <span style="font-size:1.5rem">💎</span>
+      <h2>Strike! Final Assay</h2>
+      <span class="badge">Gold Strike</span>
     </div>
     <div class="disambig-card-header" id="disambig-header" style="display:none">
-      <span style="font-size:1.4rem">🤔</span>
-      <h2>MCC Disambiguation Required</h2>
-      <span class="disambig-badge">Select MCC</span>
+      <span style="font-size:1.4rem">🪨</span>
+      <h2>Multiple Veins Detected</h2>
+      <span class="disambig-badge">Select Seam</span>
     </div>
     <div class="output-body" id="result-body"></div>
     <!-- MCC drill-down panel: shown when multiple MCCs are in the result -->
     <div class="mcc-drill-panel" id="mcc-drill-panel" style="display:none">
-      <h3>🏷️ Drill into a specific MCC</h3>
+      <h3>⛏️ Drill deeper into a specific seam</h3>
       <div class="mcc-drill-buttons" id="mcc-drill-buttons"></div>
     </div>
 
     <!-- Iteration panel -->
     <div class="iterate-panel" id="iterate-panel" style="display:none">
-      <h3>🔄 Continue the conversation</h3>
+      <h3>⛏️ Continue Drilling</h3>
       <div class="iterate-buttons">
-        <button class="btn-secondary" id="btn-detail" onclick="sendIteration('detail')">🔍 Get more detail on each requirement</button>
-        <button class="btn-secondary" id="btn-addinfo" onclick="toggleAddInfo()">➕ Add more information</button>
+        <button class="btn-secondary" id="btn-detail" onclick="sendIteration('detail')">🔬 Detail every requirement</button>
+        <button class="btn-secondary" id="btn-addinfo" onclick="toggleAddInfo()">➕ Add ore sample</button>
       </div>
       <div class="iterate-input" id="iterate-input">
-        <textarea id="iterate-text" placeholder="Add context, clarify the business model, provide additional information…"></textarea>
-        <button type="button" class="btn-secondary" style="border-color: var(--accent); color: var(--accent-lt);" onclick="sendIteration('info')">Send to Synthesiser →</button>
+        <textarea id="iterate-text" placeholder="Add context about the merchant, clarify the business model, or provide additional details to refine the assay…"></textarea>
+        <button type="button" class="btn-secondary" style="border-color: var(--accent); color: var(--accent-lt);" onclick="sendIteration('info')">⛏️ Send to Smelter →</button>
       </div>
       <div id="iterate-results"></div>
     </div>
   </div>
 
-  <footer>Check Me · MCC Multi-Gem Workflow</footer>
+  <footer>⛏️ Check Me · MCC Prospector · 4-Gem Smelting Pipeline</footer>
 
   <script>
     const form         = document.getElementById('check-form');
@@ -636,11 +691,11 @@
       document.getElementById('mcc-drill-panel').style.display = 'none';
       document.getElementById('iterate-panel').style.display = 'none';
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="spinner"></span> Running…';
+      submitBtn.innerHTML = '<span class="spinner"></span> Mining…';
       document.getElementById('loading-bar').style.width = '0%';
       document.getElementById('loading-eta').textContent = 'Starting…';
 
-      addStage('💎', 'Starting Check Me workflow…');
+      addStage('⛏️', 'Lowering the cage — prospecting begins…');
 
       const data = new FormData(form);
 
@@ -664,7 +719,7 @@
             try { event = JSON.parse(line.slice(6)); } catch { continue; }
 
             if (event.type === 'stage') {
-              addStage(event.stage === 'stage1' ? '🚀' : '🧠', event.msg);
+              addStage(event.stage === 'stage1' ? '⛏️' : '🔥', event.msg);
               startLoadingBar(event.stage);
             } else if (event.type === 'stage_done') {
               addStage('✅', event.msg);
@@ -697,7 +752,7 @@
               resultCard.scrollIntoView({ behavior: 'smooth' });
               if (event.run_id) currentRunId = event.run_id;
             } else if (event.type === 'done') {
-              addStage('🏁', 'Workflow complete.');
+              addStage('💎', 'Strike confirmed — assay complete.');
             }
           }
         }
@@ -707,7 +762,7 @@
       } finally {
         clearInterval(_barTimer);
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '🔍 Run Check';
+        submitBtn.innerHTML = '⛏️ Begin Prospecting';
       }
     });
 
@@ -732,7 +787,7 @@
       // Add a result container
       const container = document.createElement('div');
       container.className = 'iterate-result';
-      container.innerHTML = `<div class="iterate-result-header">🧠 Updated Recommendation</div><div class="output-body iter-body"><span class="spinner"></span> Synthesiser is thinking…</div>`;
+      container.innerHTML = `<div class="iterate-result-header">🔥 Smelter Output — Refined Assay</div><div class="output-body iter-body"><span class="spinner"></span> Smelter is processing ore…</div>`;
       document.getElementById('iterate-results').appendChild(container);
       const body = container.querySelector('.iter-body');
 
@@ -795,7 +850,7 @@
       // Scroll to results area and show a loading indicator
       const drillResult = document.createElement('div');
       drillResult.className = 'iterate-result';
-      drillResult.innerHTML = `<div class="iterate-result-header">🏷️ Detailed Requirements — MCC ${code}</div><div class="output-body iter-body"><span class="spinner"></span> Building detailed report…</div>`;
+      drillResult.innerHTML = `<div class="iterate-result-header">⛏️ Deep Drill — MCC ${code} Seam Analysis</div><div class="output-body iter-body"><span class="spinner"></span> Drilling into seam…</div>`;
       document.getElementById('iterate-results').appendChild(drillResult);
       drillResult.scrollIntoView({ behavior: 'smooth' });
       const body = drillResult.querySelector('.iter-body');
@@ -851,12 +906,12 @@
       btnEl.classList.add('selected');
 
       // Switch header to "loading" state
-      disambigHeader.innerHTML = `<span style="font-size:1.4rem">🧠</span><h2>Generating report for option ${num}…</h2><span class="disambig-badge">Working</span>`;
+      disambigHeader.innerHTML = `<span style="font-size:1.4rem">🔥</span><h2>Smelting seam ${num}…</h2><span class="disambig-badge">Processing</span>`;
 
       // Show spinner below menu
       const spinner = document.createElement('div');
       spinner.className = 'stage-row';
-      spinner.innerHTML = `<span class="stage-icon"><span class="spinner"></span></span><span class="stage-text">Synthesiser is building the full report…</span>`;
+      spinner.innerHTML = `<span class="stage-icon"><span class="spinner"></span></span><span class="stage-text">Smelter is building the full assay…</span>`;
       resultBody.appendChild(spinner);
 
       const choiceText = btnEl.querySelector('.disambig-label').innerText;
@@ -903,7 +958,7 @@
         if (!gotResult) {
           allBtns.forEach(b => { b.disabled = false; });
           btnEl.classList.remove('selected');
-          disambigHeader.innerHTML = `<span style="font-size:1.4rem">🤔</span><h2>MCC Disambiguation Required</h2><span class="disambig-badge">Select MCC</span>`;
+          disambigHeader.innerHTML = `<span style="font-size:1.4rem">🪨</span><h2>Multiple Veins Detected</h2><span class="disambig-badge">Select Seam</span>`;
         }
       } catch (err) {
         resultBody.innerHTML += `<p style="color:var(--red);margin-top:1rem">⚠️ ${err.message}</p>`;

@@ -471,6 +471,41 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
         "--- CRB OUTPUT ---",
     ]
 
+    def extract_synthesiser_output(raw: str) -> str:
+        """
+        Gem 4 always starts its output with BLUF.
+        Gems 1-3 never use BLUF.
+        So find the first occurrence of BLUF in the page text — that's where
+        the Synthesiser's response begins.
+        """
+        m = re.search(r'\bBLUF\b', raw, re.IGNORECASE)
+        if m:
+            return clean_response(raw[m.start():].strip())
+
+        # Fallback: find where the CRB output ends by searching for the tail
+        # of the gem3 output text.  What comes after it is Gem 4's response.
+        gem3_tail = outputs.get("gem3", "").strip()
+        for chunk in [150, 80, 40]:
+            if not gem3_tail:
+                break
+            anchor = gem3_tail[-chunk:]
+            idx = raw.rfind(anchor)
+            if idx > 0:
+                candidate = clean_response(raw[idx + len(anchor):].strip())
+                if len(candidate) > 100:
+                    return candidate
+
+        # Last resort: strip everything up to and including the last section marker
+        for marker in reversed(SYNTHESIS_MARKERS):
+            if marker in raw:
+                candidate = clean_response(raw.split(marker, 1)[-1].strip())
+                # Skip to "Section" or any structured keyword in that tail
+                sec = re.search(r'\b(BLUF|Section\s*1|Bottom Line)\b', candidate, re.IGNORECASE)
+                if sec:
+                    return candidate[sec.start():]
+                return candidate
+        return raw
+
     try:
         await page.goto(gem["url"], wait_until="domcontentloaded", timeout=60_000)
         await asyncio.sleep(3)
@@ -484,21 +519,20 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
 
         response = await get_last_response_text(page)
 
-        # Safety check: if we accidentally got the prompt back, re-extract
-        if any(m in response for m in SYNTHESIS_MARKERS):
-            log(name, "⚠️  Extracted text looks like the prompt — retrying extraction in 3s")
-            await asyncio.sleep(3)
-            response = await get_last_response_text(page)
-            # If still bad, strip out the prompt sections manually as a last resort
-            if any(m in response for m in SYNTHESIS_MARKERS):
-                log(name, "⚠️  Second extraction still contains prompt — stripping prompt sections")
-                for marker in SYNTHESIS_MARKERS:
-                    if marker in response:
-                        response = response.rsplit(marker, 1)[-1].strip()
+        # If the extraction picked up the synthesis prompt, recover using BLUF anchor
+        if any(m in response for m in SYNTHESIS_MARKERS) or len(response) < 200:
+            log(name, "⚠️  Response looks like prompt content — extracting via full page text")
+            full_text = await page.inner_text("body")
+            response = extract_synthesiser_output(full_text)
+            if not response:
+                # Final attempt: re-extract after a short wait (page may still be rendering)
+                await asyncio.sleep(4)
+                full_text = await page.inner_text("body")
+                response = extract_synthesiser_output(full_text) or response
 
         log(name, f"Synthesis complete ({len(response)} chars)")
 
-        # Always save synthesiser HTML so we can diagnose scraping issues
+        # Save synthesiser HTML for diagnosis
         ts = datetime.now().strftime("%H%M%S")
         try:
             Path(f"debug_synthesiser_{ts}.html").write_text(await page.content(), encoding="utf-8")
@@ -513,6 +547,7 @@ async def run_synthesis(context: BrowserContext, domain: str, flow: str, outputs
         return f"(Error retrieving synthesis: {e})"
     finally:
         await page.close()
+
 
 
 # ---------------------------------------------------------------------------
