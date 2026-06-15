@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, formatCurrency, formatPct, calcVariance, varianceColor } from '@/lib/utils';
+import { cn, formatCurrency, formatPct, calcVariance } from '@/lib/utils';
 
 interface KPICardProps {
   title: string;
@@ -13,14 +13,24 @@ interface KPICardProps {
   isLoading?: boolean;
 }
 
-function formatValue(value: number, formatAs: KPICardProps['formatAs'], prefix?: string, suffix?: string): string {
+function formatValue(
+  value: number,
+  formatAs: KPICardProps['formatAs'] = 'currency',
+  prefix?: string,
+  suffix?: string
+): string {
   let formatted: string;
-  if (formatAs === 'currency') {
-    formatted = formatCurrency(value);
-  } else if (formatAs === 'percent') {
-    formatted = formatPct(value);
-  } else {
-    formatted = value.toLocaleString('en-US');
+  switch (formatAs) {
+    case 'currency':
+      formatted = formatCurrency(value);
+      break;
+    case 'percent':
+      formatted = formatPct(value);
+      break;
+    case 'number':
+    default:
+      formatted = new Intl.NumberFormat('en-US').format(value);
+      break;
   }
   return `${prefix ?? ''}${formatted}${suffix ?? ''}`;
 }
@@ -35,46 +45,59 @@ export default function KPICard({
   subtitle,
   isLoading = false,
 }: KPICardProps) {
-  const variance = target !== undefined ? calcVariance(value, target) : null;
+  const { absolute, pct } = target != null ? calcVariance(value, target) : { absolute: 0, pct: 0 };
+  const isPositive = absolute >= 0;
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-3 animate-pulse">
-        <div className="h-3 bg-gray-200 rounded w-2/3" />
-        <div className="h-8 bg-gray-200 rounded w-1/2" />
-        <div className="h-3 bg-gray-200 rounded w-1/3" />
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-card animate-pulse">
+        <div className="h-4 w-2/3 rounded bg-neutral-200 mb-3" />
+        <div className="h-8 w-1/2 rounded bg-neutral-200 mb-2" />
+        <div className="h-3 w-1/3 rounded bg-neutral-200" />
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-2 hover:shadow-md transition-shadow">
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-card hover:shadow-card-hover transition-shadow">
       {/* Title */}
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+      <p className="text-sm font-medium text-neutral-500 truncate">{title}</p>
 
       {/* Primary value */}
-      <p className="text-2xl font-bold text-gray-900 leading-tight">
+      <p className="mt-1.5 text-2xl font-bold text-neutral-900 tabular-nums">
         {formatValue(value, formatAs, prefix, suffix)}
       </p>
 
-      {/* Target + variance row */}
-      {target !== undefined && variance !== null && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-400">
-            vs {formatValue(target, formatAs, prefix, suffix)}
-          </span>
-          <span className={cn('font-semibold', varianceColor(variance.pct))}>
-            {variance.pct >= 0 ? '+' : ''}{formatPct(variance.pct)}
-          </span>
-          <span className={cn('text-xs', varianceColor(variance.absolute))}>
-            ({formatAs === 'currency' ? formatCurrency(Math.abs(variance.absolute)) : Math.abs(variance.absolute).toLocaleString()})
-          </span>
+      {/* Subtitle */}
+      {subtitle && (
+        <p className="mt-0.5 text-xs text-neutral-400">{subtitle}</p>
+      )}
+
+      {/* Target + variance */}
+      {target != null && (
+        <div className="mt-3 flex items-center gap-3 border-t border-neutral-100 pt-3">
+          <div className="text-xs text-neutral-500">
+            Target: <span className="font-medium text-neutral-700">{formatValue(target, formatAs, prefix, suffix)}</span>
+          </div>
+          <div
+            className={cn(
+              'ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold',
+              isPositive
+                ? 'bg-success-50 text-success-700'
+                : 'bg-danger-50 text-danger-700'
+            )}
+          >
+            <span>{isPositive ? '▲' : '▼'}</span>
+            <span>{formatPct(Math.abs(pct))}</span>
+          </div>
         </div>
       )}
 
-      {/* Optional subtitle / run-rate note */}
-      {subtitle && (
-        <p className="text-xs text-gray-400">{subtitle}</p>
+      {/* Run rate indicator when target provided and variance is negative */}
+      {target != null && !isPositive && (
+        <p className="mt-1 text-xs text-danger-600">
+          {formatCurrency(Math.abs(absolute))} below target
+        </p>
       )}
     </div>
   );

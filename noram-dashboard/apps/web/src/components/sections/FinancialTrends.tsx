@@ -1,53 +1,92 @@
 'use client';
-import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
 
-const MONTHLY_DATA = [
-  { month: 'Jan', actual: 180000, base: 200000, roll: 220000 },
-  { month: 'Feb', actual: 370000, base: 400000, roll: 440000 },
-  { month: 'Mar', actual: 590000, base: 620000, roll: 660000 },
-  { month: 'Apr', actual: 820000, base: 860000, roll: 900000 },
-  { month: 'May', actual: 1050000, base: 1100000, roll: 1150000 },
-  { month: 'Jun', actual: 1240000, base: 1350000, roll: 1400000 },
-];
+import { useState, useEffect } from 'react';
+import LineChart from '@/components/charts/LineChart';
+import BarChart from '@/components/charts/BarChart';
+import { fetchFinancialTrends } from '@/lib/api';
+import type { DashboardFilters, TrendDataPoint } from '@/types';
 
-export default function FinancialTrends() {
+interface FinancialTrendsProps {
+  filters: DashboardFilters;
+}
+
+export default function FinancialTrends({ filters }: FinancialTrendsProps) {
+  const [trends, setTrends] = useState<TrendDataPoint[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await fetchFinancialTrends(filters);
+        if (!cancelled) setTrends(data);
+      } catch (err) {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : 'Failed to load financial trends');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [filters]);
+
   return (
-    <section id="financial-trends" className="space-y-6">
-      <h2 className="text-lg font-semibold text-white">Financial Trends</h2>
+    <section className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-neutral-900">Financial Trends</h2>
+        <p className="text-sm text-neutral-500">
+          Monthly net revenue actuals vs targets and total processed volume over time.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Frontbook MR Cumulative */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-gray-300 mb-4">Frontbook MR — Cumulative YTD</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={MONTHLY_DATA}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 12 }} />
-              <YAxis tickFormatter={(v) => `$${(v/1000).toFixed(0)}K`} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <Tooltip formatter={(v: number) => [`$${(v/1000).toFixed(0)}K`, '']} />
-              <Legend />
-              <Line type="monotone" dataKey="actual" stroke="#3b82f6" strokeWidth={2} dot={false} name="Actuals" />
-              <Line type="monotone" dataKey="base" stroke="#6b7280" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Base Target" />
-              <Line type="monotone" dataKey="roll" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 4" dot={false} name="Roll Target" />
-            </LineChart>
-          </ResponsiveContainer>
+      {error && (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Revenue actuals vs targets line chart */}
+        <div className="card">
+          <h3 className="mb-4 text-sm font-semibold text-neutral-700">
+            Revenue Actuals vs Targets
+          </h3>
+          {isLoading ? (
+            <div className="skeleton h-72 w-full rounded-lg" />
+          ) : (
+            <LineChart
+              data={trends}
+              lines={[
+                { key: 'actual', color: '#0070f3', label: 'Actual' },
+                { key: 'target', color: '#d1d5db', label: 'Target' },
+              ]}
+              height={288}
+            />
+          )}
         </div>
 
-        {/* US BIN TPV by Month */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-gray-300 mb-4">Total US BIN TPV by Month</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={MONTHLY_DATA}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 12 }} />
-              <YAxis tickFormatter={(v) => `$${(v/1_000_000).toFixed(0)}M`} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <Tooltip formatter={(v: number) => [`$${(v/1_000_000).toFixed(1)}M`, 'TPV']} />
-              <Bar dataKey="actual" fill="#3b82f6" radius={[4, 4, 0, 0]} name="TPV" />
-            </BarChart>
-          </ResponsiveContainer>
+        {/* TPV by month bar chart */}
+        <div className="card">
+          <h3 className="mb-4 text-sm font-semibold text-neutral-700">
+            Total Processed Volume (TPV) by Month
+          </h3>
+          {isLoading ? (
+            <div className="skeleton h-72 w-full rounded-lg" />
+          ) : (
+            <BarChart
+              data={trends}
+              bars={[
+                { key: 'actual', color: '#0070f3', label: 'TPV' },
+              ]}
+              height={288}
+            />
+          )}
         </div>
       </div>
     </section>

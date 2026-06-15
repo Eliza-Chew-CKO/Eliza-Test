@@ -9,28 +9,30 @@ import FrontbookPipeline from '@/components/sections/FrontbookPipeline';
 import BackbookAccount from '@/components/sections/BackbookAccount';
 import Leaderboards from '@/components/sections/Leaderboards';
 
+const DEFAULT_FILTERS: DashboardFilters = {
+  dateRange: 'MTD',
+  repId: null,
+  tier: null,
+};
+
 export default function DashboardPage() {
-  const [filters, setFilters] = useState<DashboardFilters>({
-    dateRange: 'MTD',
-    repId: null,
-    tier: null,
-  });
+  const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_FILTERS);
 
   return (
     <div className="space-y-8">
-      {/* Global filter bar — affects all sections */}
+      {/* Global filter bar — date range, rep, tier */}
       <GlobalFilters filters={filters} onChange={setFilters} />
 
-      {/* Section 1: Executive KPI summary */}
+      {/* Section 1: High-level KPI cards */}
       <ExecutiveSummary filters={filters} />
 
-      {/* Section 2: Revenue trends vs targets */}
+      {/* Section 2: Revenue actuals vs targets, TPV trends */}
       <FinancialTrends filters={filters} />
 
-      {/* Section 3: Frontbook pipeline funnel + opportunity table */}
+      {/* Section 3: Frontbook pipeline funnel + open opportunities table */}
       <FrontbookPipeline filters={filters} />
 
-      {/* Section 4: Backbook account health */}
+      {/* Section 4: Backbook account metrics */}
       <BackbookAccount filters={filters} />
 
       {/* Section 5: Rep leaderboards */}

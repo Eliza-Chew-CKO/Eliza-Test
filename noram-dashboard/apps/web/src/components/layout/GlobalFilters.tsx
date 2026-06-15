@@ -1,129 +1,145 @@
 'use client';
 
-import { cn } from '@/lib/utils';
+import { useState } from 'react';
 import type { DashboardFilters } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface GlobalFiltersProps {
   filters: DashboardFilters;
   onChange: (filters: DashboardFilters) => void;
 }
 
-const DATE_RANGE_OPTIONS: { value: DashboardFilters['dateRange']; label: string }[] = [
-  { value: 'MTD', label: 'MTD' },
-  { value: 'YTD', label: 'YTD' },
-  { value: 'CUSTOM', label: 'Custom' },
+const DATE_RANGES: Array<{ label: string; value: DashboardFilters['dateRange'] }> = [
+  { label: 'MTD', value: 'MTD' },
+  { label: 'YTD', value: 'YTD' },
+  { label: 'Custom', value: 'CUSTOM' },
 ];
 
-const TIER_OPTIONS = [
-  { value: '', label: 'All Tiers' },
-  { value: 'Enterprise', label: 'Enterprise' },
-  { value: 'Mid-Market', label: 'Mid-Market' },
-  { value: 'SMB', label: 'SMB' },
-];
+const TIERS = ['Enterprise', 'Mid-Market', 'SMB'];
 
-// Placeholder rep options — in production these would be fetched from /api/users
-const REP_OPTIONS = [
-  { value: '', label: 'All Reps' },
-  { value: 'rep-1', label: 'Alex Johnson' },
-  { value: 'rep-2', label: 'Maria Garcia' },
-  { value: 'rep-3', label: 'James Chen' },
-  { value: 'rep-4', label: 'Sarah Williams' },
+// Placeholder reps — in production these would be fetched from the API
+const PLACEHOLDER_REPS = [
+  { id: 'rep-1', name: 'Alice Johnson' },
+  { id: 'rep-2', name: 'Bob Smith' },
+  { id: 'rep-3', name: 'Carol Lee' },
+  { id: 'rep-4', name: 'David Kim' },
 ];
 
 export default function GlobalFilters({ filters, onChange }: GlobalFiltersProps) {
-  const isCustom = filters.dateRange === 'CUSTOM';
+  const [showCustomPickers, setShowCustomPickers] = useState(
+    filters.dateRange === 'CUSTOM'
+  );
 
-  function setDateRange(dateRange: DashboardFilters['dateRange']) {
+  function handleDateRange(value: DashboardFilters['dateRange']) {
+    setShowCustomPickers(value === 'CUSTOM');
     onChange({
       ...filters,
-      dateRange,
-      // Clear custom dates when switching away from CUSTOM
-      startDate: dateRange === 'CUSTOM' ? filters.startDate : undefined,
-      endDate:   dateRange === 'CUSTOM' ? filters.endDate   : undefined,
+      dateRange: value,
+      startDate: value !== 'CUSTOM' ? undefined : filters.startDate,
+      endDate:   value !== 'CUSTOM' ? undefined : filters.endDate,
     });
   }
 
-  function clearFilters() {
+  function handleRepChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    onChange({ ...filters, repId: e.target.value || null });
+  }
+
+  function handleTierChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    onChange({ ...filters, tier: e.target.value || null });
+  }
+
+  function handleClear() {
+    setShowCustomPickers(false);
     onChange({ dateRange: 'MTD', repId: null, tier: null });
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
+    <div className="flex flex-wrap items-center gap-4 rounded-xl border border-neutral-200 bg-white px-5 py-3 shadow-card">
       {/* Date range toggle */}
-      <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
-        {DATE_RANGE_OPTIONS.map((opt) => (
+      <div className="flex items-center gap-1">
+        <span className="mr-2 text-xs font-medium text-neutral-500">Period</span>
+        {DATE_RANGES.map(({ label, value }) => (
           <button
-            key={opt.value}
-            onClick={() => setDateRange(opt.value)}
+            key={value}
+            type="button"
+            onClick={() => handleDateRange(value)}
             className={cn(
-              'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-              filters.dateRange === opt.value
-                ? 'bg-white text-neutral-900 shadow-sm'
-                : 'text-neutral-500 hover:text-neutral-700',
+              'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+              filters.dateRange === value
+                ? 'bg-primary-500 text-white'
+                : 'text-neutral-600 hover:bg-neutral-100'
             )}
           >
-            {opt.label}
+            {label}
           </button>
         ))}
       </div>
 
-      {/* Custom date pickers — visible only when CUSTOM is selected */}
-      {isCustom && (
+      {/* Custom date pickers */}
+      {showCustomPickers && (
         <div className="flex items-center gap-2">
+          <label className="text-xs text-neutral-500">From</label>
           <input
             type="date"
+            className="input w-36 text-sm"
             value={filters.startDate ?? ''}
             onChange={(e) => onChange({ ...filters, startDate: e.target.value })}
-            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
-          <span className="text-xs text-neutral-400">to</span>
+          <label className="text-xs text-neutral-500">To</label>
           <input
             type="date"
+            className="input w-36 text-sm"
             value={filters.endDate ?? ''}
             onChange={(e) => onChange({ ...filters, endDate: e.target.value })}
-            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
       )}
 
-      {/* Rep / Owner select */}
-      <select
-        value={filters.repId ?? ''}
-        onChange={(e) => onChange({ ...filters, repId: e.target.value || null })}
-        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-      >
-        {REP_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+      {/* Divider */}
+      <span className="h-6 w-px bg-neutral-200" />
 
-      {/* Tier select */}
-      <select
-        value={filters.tier ?? ''}
-        onChange={(e) => onChange({ ...filters, tier: e.target.value || null })}
-        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-      >
-        {TIER_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+      {/* Rep / Owner filter */}
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-medium text-neutral-500">Rep</label>
+        <select
+          className="input w-44 text-sm"
+          value={filters.repId ?? ''}
+          onChange={handleRepChange}
+        >
+          <option value="">All Reps</option>
+          {PLACEHOLDER_REPS.map((rep) => (
+            <option key={rep.id} value={rep.id}>
+              {rep.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Tier filter */}
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-medium text-neutral-500">Tier</label>
+        <select
+          className="input w-40 text-sm"
+          value={filters.tier ?? ''}
+          onChange={handleTierChange}
+        >
+          <option value="">All Tiers</option>
+          {TIERS.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* Clear filters */}
-      {(filters.repId || filters.tier || isCustom) && (
-        <button
-          onClick={clearFilters}
-          className="ml-auto flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 transition-colors"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-          Clear
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={handleClear}
+        className="ml-auto rounded-lg border border-neutral-200 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 transition-colors"
+      >
+        Clear filters
+      </button>
     </div>
   );
 }

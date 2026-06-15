@@ -1,94 +1,92 @@
 import axios from 'axios';
 import type {
+  DashboardFilters,
   KPISummary,
   Opportunity,
   Account,
   User,
-  DashboardFilters,
-  ApiResponse,
   FinancialTrendPoint,
+  ApiResponse,
 } from '@/types';
 
-// Base URL is set via environment variable.
-// In production, this points to the deployed Express API.
-// In local dev, Next.js rewrites /api/* → localhost:4000/api/* (see next.config.js).
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+// ─── Axios instance ────────────────────────────────────────────────────────────
 
 const apiClient = axios.create({
-  baseURL: BASE_URL,
-  timeout: 15000,
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000',
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 15_000,
 });
 
-// -----------------------------------------------------------------------
-// Helper: build query params from DashboardFilters
-// -----------------------------------------------------------------------
+// ─── Query param builder ──────────────────────────────────────────────────────
+
 function filtersToParams(filters: DashboardFilters): Record<string, string> {
   const params: Record<string, string> = {
     dateRange: filters.dateRange,
   };
   if (filters.startDate) params.startDate = filters.startDate;
-  if (filters.endDate) params.endDate = filters.endDate;
-  if (filters.repId) params.repId = filters.repId;
-  if (filters.tier) params.tier = filters.tier;
+  if (filters.endDate)   params.endDate   = filters.endDate;
+  if (filters.repId)     params.repId     = filters.repId;
+  if (filters.tier)      params.tier      = filters.tier;
   return params;
 }
 
-// -----------------------------------------------------------------------
-// KPI Summary
-// -----------------------------------------------------------------------
+// ─── API functions ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the executive KPI summary (net revenue, frontbook MNR, backbook, TPV, etc.)
+ */
 export async function fetchKPISummary(filters: DashboardFilters): Promise<KPISummary> {
-  const response = await apiClient.get<ApiResponse<KPISummary>>('/api/kpi/summary', {
+  const { data } = await apiClient.get<ApiResponse<KPISummary>>('/api/kpi/summary', {
     params: filtersToParams(filters),
   });
-  return response.data.data;
+  return data.data;
 }
 
-// -----------------------------------------------------------------------
-// Pipeline / Opportunities
-// -----------------------------------------------------------------------
+/**
+ * Fetch open pipeline opportunities, optionally filtered by stage / rep / tier.
+ */
 export async function fetchPipeline(filters: DashboardFilters): Promise<Opportunity[]> {
-  const response = await apiClient.get<ApiResponse<Opportunity[]>>('/api/pipeline', {
+  const { data } = await apiClient.get<ApiResponse<Opportunity[]>>('/api/pipeline', {
     params: filtersToParams(filters),
   });
-  return response.data.data;
+  return data.data;
 }
 
-// -----------------------------------------------------------------------
-// Backbook Accounts
-// -----------------------------------------------------------------------
+/**
+ * Fetch backbook accounts with their latest financial actuals.
+ */
 export async function fetchBackbook(filters: DashboardFilters): Promise<Account[]> {
-  const response = await apiClient.get<ApiResponse<Account[]>>('/api/backbook', {
+  const { data } = await apiClient.get<ApiResponse<Account[]>>('/api/backbook', {
     params: filtersToParams(filters),
   });
-  return response.data.data;
+  return data.data;
 }
 
-// -----------------------------------------------------------------------
-// Leaderboard
-// -----------------------------------------------------------------------
+/**
+ * Fetch rep leaderboard — ranked by revenue, includes deals closed and variance vs target.
+ */
 export async function fetchLeaderboard(
   filters: DashboardFilters
 ): Promise<{ rep: User; revenue: number; deals: number }[]> {
-  const response = await apiClient.get<
+  const { data } = await apiClient.get<
     ApiResponse<{ rep: User; revenue: number; deals: number }[]>
   >('/api/leaderboard', {
     params: filtersToParams(filters),
   });
-  return response.data.data;
+  return data.data;
 }
 
-// -----------------------------------------------------------------------
-// Financial Trends (revenue actuals vs targets by month)
-// -----------------------------------------------------------------------
+/**
+ * Fetch monthly financial trends — revenue actuals vs targets, plus TPV.
+ */
 export async function fetchFinancialTrends(
   filters: DashboardFilters
 ): Promise<FinancialTrendPoint[]> {
-  const response = await apiClient.get<ApiResponse<FinancialTrendPoint[]>>(
+  const { data } = await apiClient.get<ApiResponse<FinancialTrendPoint[]>>(
     '/api/kpi/trends',
     { params: filtersToParams(filters) }
   );
-  return response.data.data;
+  return data.data;
 }

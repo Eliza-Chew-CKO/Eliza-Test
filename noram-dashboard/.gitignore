@@ -6,12 +6,12 @@ node_modules/
 # Next.js
 .next/
 out/
+
+# Build outputs
+dist/
 build/
 
-# Production builds
-dist/
-
-# Environment variables (never commit secrets)
+# Environment files — never commit secrets
 .env
 .env.local
 .env.development.local
@@ -25,33 +25,33 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Prisma migrations (keep schema.prisma, ignore generated migrations folder)
-packages/db/prisma/migrations/
+# Prisma — keep schema.prisma, ignore generated migrations lock
+# (uncomment the next line if you do NOT want to track migrations)
+# prisma/migrations/
 
-# OS
+# macOS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+.AppleDouble
+.LSOverride
 
-# Testing
+# Coverage reports
 coverage/
 .nyc_output/
 
-# Turborepo
+# Turbo
 .turbo/
 
-# Editor
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Editor directories
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# TypeScript
-*.tsbuildinfo
-
 # Misc
-.vercel
+.cache/
+tmp/
+temp/

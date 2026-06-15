@@ -1,56 +1,47 @@
-// ============================================================
-// Core domain types for the NORAM Sales Dashboard
-// ============================================================
+// ─── Core domain types ───────────────────────────────────────────────────────
 
 export interface User {
   id: string;
   name: string;
   email: string;
+  /** e.g. "AE", "AM", "Sales Manager" */
   role: string;
   salesRegion: string;
-  createdAt: string; // ISO date string from API
+  createdAt: string; // ISO date string
 }
 
 export interface Account {
   id: string;
   alias: string;
-  tier: 'Enterprise' | 'Mid-Market' | 'SMB';
+  /** "Enterprise" | "Mid-Market" | "SMB" */
+  tier: string;
   isManaged: boolean;
   salesRepId: string;
   accountManagerId: string | null;
-  goLiveDate: string | null;
+  goLiveDate: string | null; // ISO date string
   region: string;
   referralPartner: string | null;
   sector: string | null;
   createdAt: string;
 }
 
-export type OpportunityStage =
-  | 'Discovery'
-  | 'Scoping'
-  | 'Proposal'
-  | 'Negotiation'
-  | 'Closed Won'
-  | 'Closed Lost';
-
-export type OpportunityType = 'New Logo' | 'Expansion' | 'Renewal';
-
 export interface StageHistoryEntry {
-  stage: OpportunityStage;
-  enteredAt: string;
-  exitedAt: string | null;
+  stage: string;
+  enteredAt: string; // ISO date string
 }
 
 export interface Opportunity {
   id: string;
   accountId: string;
   salesRepId: string;
-  stage: OpportunityStage;
-  type: OpportunityType;
+  /** Pipeline stage: Discovery | Scoping | Proposal | Negotiation | Closed Won | Closed Lost */
+  stage: string;
+  /** "New Logo" | "Expansion" | "Renewal" */
+  type: string;
   baseMonthlyRevenue: number;
   rollMonthlyRevenue: number;
   weightedExpectedMNR: number;
-  closeDate: string;
+  closeDate: string; // ISO date string
   goLiveDate: string | null;
   rating: string | null;
   secondOwnerId: string | null;
@@ -62,7 +53,8 @@ export interface Opportunity {
 export interface FinancialActual {
   id: string;
   accountId: string;
-  reportingMonth: string; // ISO date — first day of the month
+  /** First day of the reporting month, ISO date string */
+  reportingMonth: string;
   totalFees: number;
   grossFX: number;
   ccpExclusion: number;
@@ -82,7 +74,8 @@ export type TargetType =
 
 export interface Target {
   id: string;
-  period: string; // "YYYY-MM"
+  /** "YYYY-MM" e.g. "2025-06" */
+  period: string;
   type: TargetType;
   amount: number;
   goLiveCount: number | null;
@@ -104,9 +97,7 @@ export interface VampRecord {
   createdAt: string;
 }
 
-// ============================================================
-// Aggregated / computed types for dashboard views
-// ============================================================
+// ─── Aggregated / computed types ─────────────────────────────────────────────
 
 export interface KPISummary {
   netRevenue: number;
@@ -118,28 +109,10 @@ export interface KPISummary {
   backbookRevenue: number;
   tpvAmount: number;
   goLiveCount: number;
-  vampRatio?: number;
+  vampRatio: number;
 }
 
-export interface DashboardFilters {
-  dateRange: 'MTD' | 'YTD' | 'CUSTOM';
-  startDate?: string; // ISO date string, used when dateRange === 'CUSTOM'
-  endDate?: string;
-  repId?: string | null;
-  tier?: string | null;
-}
-
-export interface ApiResponse<T> {
-  data: T;
-  success: boolean;
-  error?: string;
-}
-
-// ============================================================
-// Table / leaderboard row shapes
-// ============================================================
-
-export interface LeaderboardRow {
+export interface LeaderboardEntry {
   rank: number;
   rep: User;
   revenue: number;
@@ -148,13 +121,30 @@ export interface LeaderboardRow {
 }
 
 export interface FinancialTrendPoint {
-  month: string;     // "Jan 2025"
+  month: string; // "Jan 2025"
   actual: number;
   target: number;
+  tpv: number;
 }
 
 export interface PipelineFunnelStage {
   stage: string;
   count: number;
   value: number;
+}
+
+// ─── Filter / API types ───────────────────────────────────────────────────────
+
+export interface DashboardFilters {
+  dateRange: 'MTD' | 'YTD' | 'CUSTOM';
+  startDate?: string;   // ISO date, used when dateRange === 'CUSTOM'
+  endDate?: string;     // ISO date, used when dateRange === 'CUSTOM'
+  repId?: string | null;
+  tier?: string | null;
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  success: boolean;
+  error?: string;
 }

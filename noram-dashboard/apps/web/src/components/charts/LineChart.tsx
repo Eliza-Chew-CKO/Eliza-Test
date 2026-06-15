@@ -10,7 +10,7 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { formatCurrency } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 
 interface LineConfig {
   key: string;
@@ -19,55 +19,40 @@ interface LineConfig {
 }
 
 interface LineChartProps {
-  data: { month: string; [key: string]: unknown }[];
+  data: { month: string; [key: string]: any }[];
   lines: LineConfig[];
   height?: number;
-  /** Format Y-axis and tooltip values as currency */
-  formatAsCurrency?: boolean;
 }
 
-export default function LineChart({
-  data,
-  lines,
-  height = 300,
-  formatAsCurrency = true,
-}: LineChartProps) {
-  const tickFormatter = formatAsCurrency
-    ? (value: number) => formatCurrency(value)
-    : (value: number) => String(value);
-
+export default function LineChart({ data, lines, height = 300 }: LineChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <RechartsLineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+      <RechartsLineChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
         <XAxis
           dataKey="month"
-          tick={{ fontSize: 12, fill: '#9ca3af' }}
-          axisLine={{ stroke: '#e5e7eb' }}
+          tick={{ fontSize: 12, fill: '#6b7280' }}
+          axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tickFormatter={tickFormatter}
-          tick={{ fontSize: 11, fill: '#9ca3af' }}
+          tick={{ fontSize: 12, fill: '#6b7280' }}
           axisLine={false}
           tickLine={false}
-          width={70}
+          tickFormatter={formatNumber}
         />
         <Tooltip
-          formatter={(value: number, name: string) => [
-            formatAsCurrency ? formatCurrency(value) : value,
-            name,
-          ]}
+          formatter={(value: number, name: string) => [formatNumber(value), name]}
           contentStyle={{
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
-            fontSize: '12px',
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
           }}
         />
         <Legend
-          wrapperStyle={{ fontSize: '12px', paddingTop: '12px' }}
           iconType="circle"
           iconSize={8}
+          wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
         />
         {lines.map((line) => (
           <Line

@@ -10,7 +10,7 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { formatCurrency } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 
 interface BarConfig {
   key: string;
@@ -19,12 +19,10 @@ interface BarConfig {
 }
 
 interface BarChartProps {
-  data: Record<string, unknown>[];
+  data: Record<string, any>[];
   bars: BarConfig[];
   height?: number;
   stacked?: boolean;
-  formatAsCurrency?: boolean;
-  xAxisKey?: string;
 }
 
 export default function BarChart({
@@ -32,52 +30,35 @@ export default function BarChart({
   bars,
   height = 300,
   stacked = false,
-  formatAsCurrency = true,
-  xAxisKey = 'month',
 }: BarChartProps) {
-  const tickFormatter = formatAsCurrency
-    ? (value: number) => formatCurrency(value)
-    : (value: number) => String(value);
-
-  const stackId = stacked ? 'stack' : undefined;
-
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <RechartsBarChart
-        data={data}
-        margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
-        barCategoryGap="25%"
-      >
+      <RechartsBarChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
         <XAxis
-          dataKey={xAxisKey}
-          tick={{ fontSize: 12, fill: '#9ca3af' }}
-          axisLine={{ stroke: '#e5e7eb' }}
+          dataKey="month"
+          tick={{ fontSize: 12, fill: '#6b7280' }}
+          axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tickFormatter={tickFormatter}
-          tick={{ fontSize: 11, fill: '#9ca3af' }}
+          tick={{ fontSize: 12, fill: '#6b7280' }}
           axisLine={false}
           tickLine={false}
-          width={70}
+          tickFormatter={formatNumber}
         />
         <Tooltip
-          formatter={(value: number, name: string) => [
-            formatAsCurrency ? formatCurrency(value) : value,
-            name,
-          ]}
+          formatter={(value: number, name: string) => [formatNumber(value), name]}
           contentStyle={{
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
-            fontSize: '12px',
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
           }}
-          cursor={{ fill: '#f9fafb' }}
         />
         <Legend
-          wrapperStyle={{ fontSize: '12px', paddingTop: '12px' }}
           iconType="square"
           iconSize={10}
+          wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
         />
         {bars.map((bar) => (
           <Bar
@@ -85,8 +66,9 @@ export default function BarChart({
             dataKey={bar.key}
             name={bar.label}
             fill={bar.color}
-            stackId={stackId}
-            radius={stacked ? undefined : [3, 3, 0, 0]}
+            radius={stacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+            stackId={stacked ? 'stack' : undefined}
+            maxBarSize={48}
           />
         ))}
       </RechartsBarChart>
