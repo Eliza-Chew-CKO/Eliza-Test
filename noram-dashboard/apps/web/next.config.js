@@ -2,19 +2,24 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // API rewrites for local development:
-  // Proxies /api/* requests from the Next.js dev server (port 3000) to the
-  // Express API server running on port 4000. In production, configure your
-  // reverse proxy (nginx / load balancer) to handle this routing instead.
+  /**
+   * API rewrites for local development.
+   *
+   * In production the frontend and API are deployed separately and the API URL
+   * is set via NEXT_PUBLIC_API_URL. During local dev, /api/* is proxied to the
+   * Express server at localhost:4000 so you don't need to worry about CORS.
+   */
   async rewrites() {
-    return process.env.NODE_ENV === 'development'
-      ? [
-          {
-            source: '/api/:path*',
-            destination: 'http://localhost:4000/api/:path*',
-          },
-        ]
-      : [];
+    // Only apply rewrites when running locally without a custom API URL set
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return [];
+    }
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:4000/api/:path*',
+      },
+    ];
   },
 };
 

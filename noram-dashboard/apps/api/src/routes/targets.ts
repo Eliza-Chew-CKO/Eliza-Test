@@ -3,81 +3,53 @@ import { parseFilters } from '../middleware/filters';
 
 const router = Router();
 
-type TargetType = 'FRONTBOOK_BASE' | 'FRONTBOOK_ROLL' | 'BACKBOOK_MANAGED' | 'BACKBOOK_UNMANAGED' | 'TPV';
-
 const MOCK_TARGETS = [
-  { id: 't1', period: '2025-06', type: 'FRONTBOOK_BASE'      as TargetType, amount: 120_000, goLiveCount: 5,    createdAt: '2025-01-01' },
-  { id: 't2', period: '2025-06', type: 'FRONTBOOK_ROLL'      as TargetType, amount: 95_000,  goLiveCount: null, createdAt: '2025-01-01' },
-  { id: 't3', period: '2025-06', type: 'BACKBOOK_MANAGED'    as TargetType, amount: 500_000, goLiveCount: null, createdAt: '2025-01-01' },
-  { id: 't4', period: '2025-06', type: 'BACKBOOK_UNMANAGED'  as TargetType, amount: 200_000, goLiveCount: null, createdAt: '2025-01-01' },
-  { id: 't5', period: '2025-06', type: 'TPV'                 as TargetType, amount: 10_000_000, goLiveCount: null, createdAt: '2025-01-01' },
+  { id: 'tgt_1', period: '2025-06', type: 'FRONTBOOK_BASE',      amount: 300_000, goLiveCount: 8,    createdAt: '2025-01-01T00:00:00Z' },
+  { id: 'tgt_2', period: '2025-06', type: 'FRONTBOOK_ROLL',      amount: 50_000,  goLiveCount: null, createdAt: '2025-01-01T00:00:00Z' },
+  { id: 'tgt_3', period: '2025-06', type: 'BACKBOOK_MANAGED',    amount: 700_000, goLiveCount: null, createdAt: '2025-01-01T00:00:00Z' },
+  { id: 'tgt_4', period: '2025-06', type: 'BACKBOOK_UNMANAGED',  amount: 250_000, goLiveCount: null, createdAt: '2025-01-01T00:00:00Z' },
+  { id: 'tgt_5', period: '2025-06', type: 'TPV',                 amount: 90_000_000, goLiveCount: null, createdAt: '2025-01-01T00:00:00Z' },
 ];
 
 /**
  * GET /api/targets
+ * Returns target records filtered by period and/or type.
  *
- * Returns targets filtered by period and/or type.
- *
- * Query params:
- *   period  string  — YYYY-MM format
- *   type    string  — TargetType enum value
+ * Query params: period (YYYY-MM), type (TargetType enum)
  */
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const { period, type } = req.query;
+router.get('/', parseFilters, (req: Request, res: Response) => {
+  const { period, type } = req.query;
 
-    // TODO: prisma.target.findMany({ where: { period, type } })
-    let results = MOCK_TARGETS;
-    if (period) results = results.filter((t) => t.period === String(period));
-    if (type)   results = results.filter((t) => t.type   === String(type));
+  let results = [...MOCK_TARGETS];
 
-    res.json({ success: true, data: results });
-  } catch (err) {
-    console.error('[Targets GET /]', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch targets' });
+  if (typeof period === 'string' && period) {
+    results = results.filter((t) => t.period === period);
   }
+  if (typeof type === 'string' && type) {
+    results = results.filter((t) => t.type === type);
+  }
+
+  res.json({ success: true, data: results });
 });
 
 /**
  * GET /api/targets/variance
- *
- * Returns actuals vs targets comparison for each target type in the given period.
- * This drives the executive summary variance KPIs.
- *
- * Query params:
- *   period  string  — YYYY-MM format (defaults to current month)
+ * Returns actuals vs targets comparison for each target type.
+ * TODO: join with FinancialActual aggregates via Prisma.
  */
-router.get('/variance', parseFilters, async (req: Request, res: Response) => {
-  try {
-    const period = req.query.period
-      ? String(req.query.period)
-      : new Date().toISOString().slice(0, 7); // current YYYY-MM
+router.get('/variance', parseFilters, (_req: Request, res: Response) => {
+  const variance = MOCK_TARGETS.map((target) => ({
+    ...target,
+    actual: target.amount * (0.85 + Math.random() * 0.3), // mock actual
+    get variance() {
+      return this.actual - this.amount;
+    },
+    get variancePct() {
+      return (this.actual - this.amount) / this.amount;
+    },
+  }));
 
-    // TODO: For each TargetType:
-    //   1. Fetch Target WHERE period=period AND type=type
-    //   2. Aggregate FinancialActual for the matching month/type to get actual
-    //   3. Return { type, target, actual, variance, variancePct }
-    const variance = MOCK_TARGETS
-      .filter((t) => t.period === period)
-      .map((t) => {
-        const actual  = t.amount * (0.85 + Math.random() * 0.3); // mock actual
-        const diff    = actual - t.amount;
-        const diffPct = diff / t.amount;
-        return {
-          type:        t.type,
-          period:      t.period,
-          target:      t.amount,
-          actual:      Math.round(actual),
-          variance:    Math.round(diff),
-          variancePct: Math.round(diffPct * 10_000) / 10_000,
-        };
-      });
-
-    res.json({ success: true, data: variance });
-  } catch (err) {
-    console.error('[Targets /variance]', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch target variance' });
-  }
+  res.json({ success: true, data: variance });
 });
 
 export default router;

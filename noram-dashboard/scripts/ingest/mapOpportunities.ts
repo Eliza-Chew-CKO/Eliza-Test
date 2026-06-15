@@ -2,132 +2,126 @@
  * mapOpportunities.ts
  *
  * Maps rows from the "Salesforce Opportunity Snapshot" Excel sheet to
- * Opportunity create objects suitable for Prisma upsert.
+ * Prisma OpportunityCreateInput objects.
  *
  * Expected sheet columns:
- *   - "Opportunity ID" or "SF ID"              → used as the source ID reference
- *   - "Account" or "Account Name"              → accountId reference (by alias)
- *   - "Owner" or "Rep" or "AE"                 → salesRepId reference
- *   - "Stage" or "Opportunity Stage"           → stage (normalised)
- *   - "Type" or "Opportunity Type"             → type (New Logo / Expansion)
- *   - "Base MNR" or "Base Monthly Revenue"     → baseMonthlyRevenue
- *   - "Roll MNR" or "Roll Monthly Revenue"     → rollMonthlyRevenue
- *   - "Weighted MNR" or "Expected MNR"         → weightedExpectedMNR
- *   - "Close Date"                             → closeDate
- *   - "Go Live" or "Go-Live Date"              → goLiveDate (optional)
- *   - "Rating"                                 → rating
- *   - "Second Owner" or "Co-Owner"             → secondOwnerId (optional)
+ *   - Opportunity ID         : Salesforce opportunity ID (used as stable external ID)
+ *   - Account Name           : Matched to Account.alias for connect
+ *   - Owner Email            : Sales rep email — connected to User
+ *   - Stage                  : Salesforce stage name (normalised to canonical values)
+ *   - Type                   : "New Business" / "Existing Business" (mapped to type enum)
+ *   - Base MNR               : Numeric monthly revenue (base)
+ *   - Roll MNR / ARR         : Numeric monthly revenue (roll-on)
+ *   - Weighted MNR           : Pre-calculated weighted value (or computed from stage)
+ *   - Close Date             : Expected close date
+ *   - Go Live Date           : Expected go-live date
+ *   - Rating                 : "Hot" | "Warm" | "Cold" (or Salesforce forecast category)
+ *   - Second Owner Email     : Optional co-owner email
  */
 
-export interface OpportunityCreateInput {
-  accountId:           string;  // Will be resolved to Account.id by alias
-  salesRepId:          string;  // Will be resolved to User.id by name/email
-  stage:               string;
-  type:                string;
-  baseMonthlyRevenue:  number;
-  rollMonthlyRevenue:  number;
-  weightedExpectedMNR: number;
-  closeDate:           Date;
-  goLiveDate:          Date | null;
-  rating:              string | null;
-  secondOwnerId:       string | null;
-  stageHistory:        unknown[];
-}
+import type { Prisma } from '@prisma/client';
+import { parseExcelDate } from './dateUtils';
 
-function resolveColumn(row: Record<string, unknown>, candidates: string[]): string {
-  for (const col of candidates) {
-    const val = row[col];
-    if (val !== null && val !== undefined && String(val).trim() !== '') {
-      return String(val).trim();
-    }
-  }
-  return '';
-}
+// Stage probability map for computing weighted MNR if not provided
+const STAGE_WIN_PROBABILITY: Record<string, number> = {
+  Discovery: 0.1,
+  Scoping: 0.25,
+  Proposal: 0.4,
+  Negotiation: 0.75,
+  'Closed Won': 1.0,
+  'Closed Lost': 0.0,
+};
 
-function parseDate(raw: unknown): Date | null {
-  if (!raw) return null;
-  if (typeof raw === 'number') {
-    // Excel serial date
-    const d = new Date((raw - 25569) * 86400 * 1000);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  const d = new Date(String(raw));
-  return isNaN(d.getTime()) ? null : d;
-}
+// Map Salesforce stage names to canonical dashboard stages
+const STAGE_MAP: Record<string, string> = {
+  'Needs Analysis': 'Discovery',
+  'Qualification': 'Discovery',
+  'Value Proposition': 'Scoping',
+  'Id. Decision Makers': 'Scoping',
+  'Perception Analysis': 'Scoping',
+  'Proposal/Price Quote': 'Proposal',
+  'Negotiation/Review': 'Negotiation',
+  'Closed Won': 'Closed Won',
+  'Closed Lost': 'Closed Lost',
+};
 
-function parseMoney(raw: unknown): number {
-  if (typeof raw === 'number') return raw;
-  const str = String(raw ?? '').replace(/[$,\s]/g, '');
-  const parsed = parseFloat(str);
-  return isNaN(parsed) ? 0 : parsed;
+/**
+ * normaliseStage
+ * Maps Salesforce stage names to canonical stages, defaulting to 'Discovery'.
+ */
+function normaliseStage(raw: string | null | undefined): string {
+  if (!raw) return 'Discovery';
+  return STAGE_MAP[raw.trim()] ?? raw.trim();
 }
 
 /**
- * Normalise Salesforce stage names to the dashboard's canonical stage values.
- * Adjust mappings based on the actual stage names used in your Salesforce instance.
+ * normaliseType
+ * Maps Salesforce opportunity types to canonical dashboard types.
  */
-function normaliseStage(raw: string): string {
+function normaliseType(raw: string | null | undefined): string {
+  if (!raw) return 'New Logo';
   const lower = raw.toLowerCase();
-  if (lower.includes('discover'))   return 'Discovery';
-  if (lower.includes('scop'))       return 'Scoping';
-  if (lower.includes('proposal'))   return 'Proposal';
-  if (lower.includes('negot'))      return 'Negotiation';
-  if (lower.includes('won'))        return 'Closed Won';
-  if (lower.includes('lost'))       return 'Closed Lost';
-  return raw;
-}
-
-/**
- * Infer opportunity type from stage, description, or explicit type column.
- */
-function inferType(raw: string): string {
-  const lower = raw.toLowerCase();
-  if (lower.includes('expansion') || lower.includes('upsell')) return 'Expansion';
-  if (lower.includes('renewal'))                                return 'Renewal';
+  if (lower.includes('existing') || lower.includes('expansion') || lower.includes('upsell')) {
+    return 'Expansion';
+  }
+  if (lower.includes('renewal')) return 'Renewal';
   return 'New Logo';
+}
+
+/**
+ * parseDecimal
+ * Safely parses a numeric value from a cell (handles strings with currency symbols).
+ */
+function parseDecimal(value: any): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[$,£€\s]/g, '');
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? 0 : n;
+  }
+  return 0;
 }
 
 /**
  * mapOpportunities
  *
- * Converts raw Salesforce Opportunity Snapshot rows into OpportunityCreateInput objects.
- * Rows missing a close date are skipped.
- *
- * @param rows - Raw row objects from xlsx.utils.sheet_to_json
- * @returns Array of OpportunityCreateInput objects
+ * @param rows  Raw row objects from the "Salesforce Opportunity Snapshot" sheet
+ * @returns     Array of Prisma.OpportunityCreateInput objects
  */
-export function mapOpportunities(rows: Record<string, unknown>[]): OpportunityCreateInput[] {
-  const mapped: OpportunityCreateInput[] = [];
+export function mapOpportunities(rows: Record<string, any>[]): Prisma.OpportunityCreateInput[] {
+  const results: Prisma.OpportunityCreateInput[] = [];
 
   for (const row of rows) {
-    const closeDateRaw = row['Close Date'] ?? row['CloseDate'] ?? row['Expected Close'];
-    const closeDate    = parseDate(closeDateRaw);
+    const accountName = (row['Account Name'] as string | null)?.trim();
+    const ownerEmail = (row['Owner Email'] as string | null)?.trim();
+    const closeDateRaw = row['Close Date'];
 
-    if (!closeDate) {
-      // Close date is required — skip malformed rows
+    if (!accountName || !closeDateRaw) {
+      console.warn('[mapOpportunities] Skipping row — missing Account Name or Close Date');
       continue;
     }
 
-    const accountAlias = resolveColumn(row, ['Account', 'Account Name', 'Merchant']);
-    const repName      = resolveColumn(row, ['Owner', 'Rep', 'AE', 'Sales Rep']);
-    const stageRaw     = resolveColumn(row, ['Stage', 'Opportunity Stage', 'Sales Stage']);
-    const typeRaw      = resolveColumn(row, ['Type', 'Opportunity Type', 'Deal Type']);
+    const stage = normaliseStage(row['Stage'] as string | null);
+    const base = parseDecimal(row['Base MNR'] ?? row['Monthly Revenue']);
+    const roll = parseDecimal(row['Roll MNR'] ?? row['ARR'] ?? 0);
+    const probability = STAGE_WIN_PROBABILITY[stage] ?? 0.1;
+    const weighted = parseDecimal(row['Weighted MNR']) || (base + roll) * probability;
 
-    mapped.push({
-      accountId:           accountAlias || 'UNKNOWN',
-      salesRepId:          repName      || 'UNKNOWN',
-      stage:               normaliseStage(stageRaw),
-      type:                inferType(typeRaw || stageRaw),
-      baseMonthlyRevenue:  parseMoney(row['Base MNR'] ?? row['Base Monthly Revenue']),
-      rollMonthlyRevenue:  parseMoney(row['Roll MNR'] ?? row['Roll Monthly Revenue']),
-      weightedExpectedMNR: parseMoney(row['Weighted MNR'] ?? row['Expected MNR'] ?? row['Weighted Expected MNR']),
-      closeDate,
-      goLiveDate:          parseDate(row['Go Live'] ?? row['Go-Live Date'] ?? null),
-      rating:              resolveColumn(row, ['Rating', 'Opportunity Rating']) || null,
-      secondOwnerId:       resolveColumn(row, ['Second Owner', 'Co-Owner', 'Co-AE']) || null,
-      stageHistory:        [],
+    results.push({
+      account: { connect: { alias: accountName } },
+      salesRep: { connect: { email: ownerEmail ?? '' } },
+      stage,
+      type: normaliseType(row['Type'] as string | null),
+      baseMonthlyRevenue: base,
+      rollMonthlyRevenue: roll,
+      weightedExpectedMNR: Math.round(weighted * 100) / 100,
+      closeDate: parseExcelDate(closeDateRaw) ?? new Date(),
+      goLiveDate: row['Go Live Date'] ? parseExcelDate(row['Go Live Date']) : null,
+      rating: (row['Rating'] as string | null)?.trim() ?? null,
+      secondOwnerId: null, // resolve from secondOwnerEmail after user upserts
+      stageHistory: [],
     });
   }
 
-  return mapped;
+  return results;
 }
