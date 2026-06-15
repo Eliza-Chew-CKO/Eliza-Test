@@ -1,74 +1,76 @@
 import { Router, type Request, type Response } from 'express';
 import { parseFilters } from '../middleware/filters';
-import { getOpportunities, getPipelineFunnel } from '../services/pipelineService';
+// TODO: import { getOpportunities } from '../services/pipelineService';
 
 const router = Router();
 
+// Stub opportunity data
+const MOCK_OPPORTUNITIES = Array.from({ length: 20 }, (_, i) => ({
+  id: `opp_${i + 1}`,
+  accountId: `acc_${(i % 8) + 1}`,
+  salesRepId: `rep_${(i % 4) + 1}`,
+  stage: ['Discovery', 'Scoping', 'Proposal', 'Negotiation', 'Closed Won'][i % 5],
+  type: i % 3 === 0 ? 'Expansion' : 'New Logo',
+  baseMonthlyRevenue: 10_000 + i * 5_000,
+  rollMonthlyRevenue: 12_000 + i * 5_500,
+  weightedExpectedMNR: (10_000 + i * 5_000) * [0.1, 0.2, 0.4, 0.7, 1.0][i % 5],
+  closeDate: new Date(2025, 6 + (i % 6), 15).toISOString(),
+  goLiveDate: null,
+  rating: ['Hot', 'Warm', 'Cold'][i % 3],
+  secondOwnerId: null,
+  stageHistory: [],
+  createdAt: new Date(2025, 0, i + 1).toISOString(),
+  updatedAt: new Date(2025, 3, i + 1).toISOString(),
+}));
+
 /**
  * GET /api/pipeline
- *
- * Returns a paginated list of open Opportunities, with optional filters.
+ * Returns a paginated, filtered list of open opportunities.
  *
  * Query params:
- *   - dateRange, repId, tier (via parseFilters middleware)
- *   - stage?: filter to a specific pipeline stage
- *   - page?:  page number (default 1)
- *   - limit?: page size (default 20)
+ *   stage      Filter by pipeline stage
+ *   repId      Filter by sales rep
+ *   dateRange  Date range filter applied to closeDate
+ *   page       Page number (default: 1)
+ *   pageSize   Results per page (default: 20)
  */
-router.get('/', parseFilters, async (req: Request, res: Response) => {
-  try {
-    const filters = (req as any).filters;
-    const stage = req.query.stage as string | undefined;
-    const page = parseInt(req.query.page as string, 10) || 1;
-    const limit = parseInt(req.query.limit as string, 10) || 20;
+router.get('/', parseFilters, (req: Request, res: Response) => {
+  const { stage, repId } = req.query;
+  // TODO: replace with pipelineService.getOpportunities(req.parsedFilters)
 
-    // TODO: pass stage + pagination into pipelineService.getOpportunities
-    const data = await getOpportunities({ ...filters, stage });
-    const paginated = data.slice((page - 1) * limit, page * limit);
+  let results = [...MOCK_OPPORTUNITIES];
 
-    res.json({
-      success: true,
-      data: paginated,
-      meta: { total: data.length, page, limit, pages: Math.ceil(data.length / limit) },
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  // Stage filter stub
+  if (typeof stage === 'string' && stage) {
+    results = results.filter((o) => o.stage === stage);
   }
-});
 
-/**
- * GET /api/pipeline/funnel
- *
- * Returns stage-level aggregate data for the pipeline funnel chart.
- * Shape: { stage: string, count: number, value: number }[]
- */
-router.get('/funnel', parseFilters, async (req: Request, res: Response) => {
-  try {
-    const filters = (req as any).filters;
-    const data = await getPipelineFunnel(filters);
-    res.json({ success: true, data });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  // Rep filter stub
+  if (typeof repId === 'string' && repId) {
+    results = results.filter((o) => o.salesRepId === repId);
   }
+
+  const page = parseInt(String(req.query.page ?? '1'), 10);
+  const pageSize = parseInt(String(req.query.pageSize ?? '20'), 10);
+  const start = (page - 1) * pageSize;
+
+  res.json({
+    success: true,
+    data: results.slice(start, start + pageSize),
+    meta: { total: results.length, page, pageSize },
+  });
 });
 
 /**
  * GET /api/pipeline/:id
- *
- * Returns a single Opportunity by ID.
+ * Returns a single opportunity by ID.
  */
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const all = await getOpportunities({});
-    const opp = all.find((o: any) => o.id === id);
-    if (!opp) {
-      return res.status(404).json({ success: false, error: 'Opportunity not found' });
-    }
-    res.json({ success: true, data: opp });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+router.get('/:id', (req: Request, res: Response) => {
+  const opp = MOCK_OPPORTUNITIES.find((o) => o.id === req.params.id);
+  if (!opp) {
+    return res.status(404).json({ success: false, error: 'Opportunity not found' });
   }
+  return res.json({ success: true, data: opp });
 });
 
 export default router;

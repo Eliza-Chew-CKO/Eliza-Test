@@ -1,112 +1,96 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import LeaderboardTable from '@/components/tables/LeaderboardTable';
+import { useState, useEffect } from 'react';
+import type { DashboardFilters, LeaderboardEntry, User } from '@/types';
 import { fetchLeaderboard } from '@/lib/api';
-import type { DashboardFilters, User } from '@/types';
+import { LeaderboardTable } from '@/components/tables/LeaderboardTable';
+import { cn } from '@/lib/utils';
 
 interface LeaderboardsProps {
   filters: DashboardFilters;
 }
 
-interface LeaderboardRow {
-  rank: number;
-  rep: User;
-  revenue: number;
-  target: number;
-  deals: number;
-}
+type LeaderboardTab = 'revenue' | 'deals';
 
-type ActiveTab = 'revenue' | 'deals';
-
-export default function Leaderboards({ filters }: LeaderboardsProps) {
+export function Leaderboards({ filters }: LeaderboardsProps) {
   const [rawData, setRawData] = useState<{ rep: User; revenue: number; deals: number }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('revenue');
+  const [activeTab, setActiveTab] = useState<LeaderboardTab>('revenue');
 
   useEffect(() => {
-    let cancelled = false;
     setIsLoading(true);
     setError(null);
-
     fetchLeaderboard(filters)
-      .then((data) => {
-        if (!cancelled) {
-          setRawData(data);
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err?.message ?? 'Failed to load leaderboard data.');
-          setIsLoading(false);
-        }
-      });
-
-    return () => { cancelled = true; };
+      .then(setRawData)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setIsLoading(false));
   }, [filters]);
 
-  // Rank by revenue (descending)
-  const byRevenue: LeaderboardRow[] = [...rawData]
+  // Sort by revenue descending and assign ranks
+  const byRevenue: LeaderboardEntry[] = [...rawData]
     .sort((a, b) => b.revenue - a.revenue)
-    .map((d, idx) => ({
-      rank: idx + 1,
-      rep: d.rep,
-      revenue: d.revenue,
-      target: d.revenue * 0.9, // placeholder target until API supports it
-      deals: d.deals,
+    .map((item, i) => ({
+      rank: i + 1,
+      ...item,
+      target: item.revenue * 0.9, // placeholder target until API returns per-rep targets
     }));
 
-  // Rank by deals closed (descending)
-  const byDeals: LeaderboardRow[] = [...rawData]
+  // Sort by deals closed descending and assign ranks
+  const byDeals: LeaderboardEntry[] = [...rawData]
     .sort((a, b) => b.deals - a.deals)
-    .map((d, idx) => ({
-      rank: idx + 1,
-      rep: d.rep,
-      revenue: d.revenue,
-      target: d.revenue * 0.9,
-      deals: d.deals,
+    .map((item, i) => ({
+      rank: i + 1,
+      ...item,
+      target: item.revenue * 0.9,
     }));
 
   const displayData = activeTab === 'revenue' ? byRevenue : byDeals;
 
   return (
-    <section id="leaderboards" className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900">Leaderboards</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Top performing reps ranked by revenue and deals closed.
+    <section aria-labelledby="leaderboards-heading">
+      <div className="mb-4">
+        <h2 id="leaderboards-heading" className="text-base font-semibold text-neutral-900">
+          Leaderboards
+        </h2>
+        <p className="text-sm text-neutral-500 mt-0.5">
+          Rep performance rankings for the selected period
         </p>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700 mb-4">
+          Failed to load leaderboard: {error}
         </div>
       )}
 
-      {/* Tab switcher */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        {([
-          { value: 'revenue', label: 'By Revenue' },
-          { value: 'deals', label: 'By Deals Closed' },
-        ] as { value: ActiveTab; label: string }[]).map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === tab.value
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <div className="card">
+        {/* Tab toggle */}
+        <div className="flex items-center gap-1 mb-5 border-b border-neutral-200 pb-4">
+          <span className="text-sm font-medium text-neutral-500 mr-3">Rank by:</span>
+          {(
+            [
+              { value: 'revenue', label: 'Revenue' },
+              { value: 'deals', label: 'Deals Closed' },
+            ] as { value: LeaderboardTab; label: string }[]
+          ).map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              className={cn(
+                'rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors',
+                activeTab === tab.value
+                  ? 'bg-primary-500 text-white shadow-sm'
+                  : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-      <LeaderboardTable data={displayData} isLoading={isLoading} />
+        <LeaderboardTable data={displayData} isLoading={isLoading} />
+      </div>
     </section>
   );
 }

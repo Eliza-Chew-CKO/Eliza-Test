@@ -1,51 +1,76 @@
-import { Router, Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { parseFilters } from '../middleware/filters';
-import { getAccounts, getBackbookSummary } from '../services/backbookService';
+// TODO: import { getAccounts, getBackbookSummary } from '../services/backbookService';
 
 const router = Router();
 
+const MOCK_ACCOUNTS = Array.from({ length: 25 }, (_, i) => ({
+  id: `acc_${i + 1}`,
+  alias: `Account ${String.fromCharCode(65 + (i % 26))}${i + 1}`,
+  tier: ['Enterprise', 'Mid-Market', 'SMB'][i % 3],
+  isManaged: i % 3 !== 2,
+  salesRepId: `rep_${(i % 4) + 1}`,
+  accountManagerId: i % 3 !== 2 ? `am_${(i % 2) + 1}` : null,
+  goLiveDate: new Date(2024, i % 12, 1).toISOString(),
+  region: ['US-East', 'US-West', 'US-Central', 'Canada'][i % 4],
+  referralPartner: i % 4 === 0 ? `Partner ${i}` : null,
+  sector: ['FinTech', 'eCommerce', 'SaaS', 'Retail'][i % 4],
+  createdAt: new Date(2023, i % 12, 1).toISOString(),
+  // Computed financial fields
+  netRevenueMTD: 20_000 + i * 8_000,
+  tpvAmount: 1_500_000 + i * 500_000,
+  vampRatio: i % 7 === 0 ? 0.0089 : 0.0015 + (i * 0.0001),
+}));
+
 /**
  * GET /api/backbook
- * Returns accounts with their latest FinancialActual and most recent VampRecord.
+ * Returns accounts with their latest financial actuals.
  *
- * Query params:
- *   tier    — Enterprise | Mid-Market | SMB
- *   repId   — filter by sales rep ID
- *   region  — filter by account region
- *   managed — 'true' | 'false' to filter managed/unmanaged accounts
+ * Query params: tier, repId, region, dateRange
  */
-router.get('/', parseFilters, async (req: Request, res: Response) => {
-  try {
-    const { managed, region } = req.query;
-    const managedFilter =
-      managed === 'true' ? true : managed === 'false' ? false : undefined;
-    const regionFilter = typeof region === 'string' ? region : undefined;
+router.get('/', parseFilters, (req: Request, res: Response) => {
+  const { tier, repId, region } = req.query;
+  // TODO: replace with backbookService.getAccounts(req.parsedFilters)
 
-    const accounts = await getAccounts({
-      ...req.filters,
-      isManaged: managedFilter,
-      region: regionFilter,
-    });
+  let results = [...MOCK_ACCOUNTS];
 
-    res.json({ success: true, data: accounts });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch backbook accounts';
-    res.status(500).json({ success: false, error: message });
+  if (typeof tier === 'string' && tier) {
+    results = results.filter((a) => a.tier === tier);
   }
+  if (typeof repId === 'string' && repId) {
+    results = results.filter((a) => a.salesRepId === repId);
+  }
+  if (typeof region === 'string' && region) {
+    results = results.filter((a) => a.region === region);
+  }
+
+  res.json({ success: true, data: results });
 });
 
 /**
  * GET /api/backbook/summary
- * Returns managed vs unmanaged revenue breakdown, total backbook MNR, and target variance.
+ * Returns managed vs unmanaged revenue breakdown.
  */
-router.get('/summary', parseFilters, async (req: Request, res: Response) => {
-  try {
-    const summary = await getBackbookSummary(req.filters);
-    res.json({ success: true, data: summary });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch backbook summary';
-    res.status(500).json({ success: false, error: message });
-  }
+router.get('/summary', parseFilters, (_req: Request, res: Response) => {
+  // TODO: replace with backbookService.getBackbookSummary(req.parsedFilters)
+
+  const managed = MOCK_ACCOUNTS.filter((a) => a.isManaged);
+  const unmanaged = MOCK_ACCOUNTS.filter((a) => !a.isManaged);
+
+  const summary = {
+    managed: {
+      count: managed.length,
+      netRevenue: managed.reduce((s, a) => s + a.netRevenueMTD, 0),
+      tpv: managed.reduce((s, a) => s + a.tpvAmount, 0),
+    },
+    unmanaged: {
+      count: unmanaged.length,
+      netRevenue: unmanaged.reduce((s, a) => s + a.netRevenueMTD, 0),
+      tpv: unmanaged.reduce((s, a) => s + a.tpvAmount, 0),
+    },
+  };
+
+  res.json({ success: true, data: summary });
 });
 
 export default router;

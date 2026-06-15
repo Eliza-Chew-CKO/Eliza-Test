@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ResponsiveContainer,
   BarChart as RechartsBarChart,
   Bar,
   XAxis,
@@ -9,8 +8,10 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ResponsiveContainer,
+  Cell,
 } from 'recharts';
-import { formatCompact } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 
 interface BarConfig {
   key: string;
@@ -19,72 +20,77 @@ interface BarConfig {
 }
 
 interface BarChartProps {
-  data: Array<{ [key: string]: unknown }>;
+  data: Record<string, any>[];
   bars: BarConfig[];
   height?: number;
-  /** When true, bars are stacked; otherwise grouped side-by-side */
+  /** If true, bars for each X-tick are stacked rather than grouped */
   stacked?: boolean;
   xAxisKey?: string;
-  yAxisFormatter?: (value: number) => string;
+  yAxisCurrency?: boolean;
 }
 
 export default function BarChart({
   data,
   bars,
-  height = 300,
+  height = 320,
   stacked = false,
   xAxisKey = 'month',
-  yAxisFormatter = formatCompact,
+  yAxisCurrency = true,
 }: BarChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <RechartsBarChart
         data={data}
-        margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+        margin={{ top: 8, right: 16, left: 16, bottom: 4 }}
         barCategoryGap={stacked ? '30%' : '20%'}
         barGap={4}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
         <XAxis
           dataKey={xAxisKey}
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          tick={{ fontSize: 12, fill: '#9ca3af' }}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tickFormatter={yAxisFormatter}
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          tick={{ fontSize: 12, fill: '#9ca3af' }}
           axisLine={false}
           tickLine={false}
-          width={60}
+          tickFormatter={(v: number) =>
+            yAxisCurrency ? formatCurrency(v, 'USD', true) : String(v)
+          }
+          width={70}
         />
         <Tooltip
-          formatter={(value: number, name: string) => [
-            formatCompact(value),
-            name,
-          ]}
           contentStyle={{
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-            fontSize: '13px',
+            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+            fontSize: 13,
           }}
-          cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+          formatter={(value: number, name: string) => {
+            const label = bars.find((b) => b.key === name)?.label ?? name;
+            return [
+              yAxisCurrency ? formatCurrency(value) : value,
+              label,
+            ];
+          }}
+          cursor={{ fill: 'rgba(0,112,243,0.05)' }}
         />
         <Legend
-          iconType="square"
-          iconSize={10}
-          wrapperStyle={{ fontSize: '13px', paddingTop: '12px' }}
+          wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+          formatter={(value: string) =>
+            bars.find((b) => b.key === value)?.label ?? value
+          }
         />
-        {bars.map(({ key, color, label }) => (
+        {bars.map((bar) => (
           <Bar
-            key={key}
-            dataKey={key}
-            name={label}
-            fill={color}
+            key={bar.key}
+            dataKey={bar.key}
+            fill={bar.color}
             stackId={stacked ? 'stack' : undefined}
             radius={stacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
-            maxBarSize={40}
+            maxBarSize={48}
           />
         ))}
       </RechartsBarChart>

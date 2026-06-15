@@ -1,73 +1,81 @@
+import 'dotenv/config';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
-
-// Load environment variables from .env at the repo root
-dotenv.config({ path: '../../.env' });
 
 // Route imports
-// /api/kpi   — KPI summary and financial trend endpoints
-import kpiRouter from './routes/kpi';
-// /api/pipeline — opportunity / frontbook pipeline endpoints
-import pipelineRouter from './routes/pipeline';
-// /api/backbook — backbook account endpoints
-import backbookRouter from './routes/backbook';
-// /api/leaderboard — rep performance leaderboard
-import leaderboardRouter from './routes/leaderboard';
-// /api/targets — target definitions and variance endpoints
-import targetsRouter from './routes/targets';
+import { kpiRouter } from './routes/kpi';
+import { pipelineRouter } from './routes/pipeline';
+import { backbookRouter } from './routes/backbook';
+import { leaderboardRouter } from './routes/leaderboard';
+import { targetsRouter } from './routes/targets';
 
 const app = express();
-const PORT = process.env.PORT ?? 4000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
 
-// -----------------------------------------------------------------------
-// Global middleware
-// -----------------------------------------------------------------------
-app.use(helmet());                        // Security headers
-app.use(cors({ origin: '*' }));          // Allow all origins in dev — tighten in prod
-app.use(morgan('dev'));                   // HTTP request logging
-app.use(express.json());                 // JSON body parsing
+// ─── Security & logging middleware ────────────────────────────────────────────
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// -----------------------------------------------------------------------
-// Health check
-// -----------------------------------------------------------------------
+// ─── Health check ─────────────────────────────────────────────────────────────
+// Used by load balancers and container orchestration to verify the service is up.
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: 'noram-api',
+    version: process.env.npm_package_version ?? '0.1.0',
+  });
 });
 
-// -----------------------------------------------------------------------
-// API routes
-// -----------------------------------------------------------------------
+// ─── API routes ───────────────────────────────────────────────────────────────
+
+// KPI summary and financial trend data for the Executive Summary and Financial Trends sections
 app.use('/api/kpi', kpiRouter);
+
+// Open pipeline opportunities and pipeline funnel data for the Frontbook Pipeline section
 app.use('/api/pipeline', pipelineRouter);
+
+// Existing account data and backbook revenue breakdowns for the Backbook section
 app.use('/api/backbook', backbookRouter);
+
+// Rep performance rankings for the Leaderboards section
 app.use('/api/leaderboard', leaderboardRouter);
+
+// Revenue and go-live targets, and actuals-vs-targets variance reports
 app.use('/api/targets', targetsRouter);
 
-// -----------------------------------------------------------------------
-// 404 handler
-// -----------------------------------------------------------------------
+// ─── 404 handler ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ success: false, error: 'Route not found' });
 });
 
-// -----------------------------------------------------------------------
-// Global error handler
-// -----------------------------------------------------------------------
+// ─── Global error handler ────────────────────────────────────────────────────
+// Must have 4 parameters to be recognised as an error-handling middleware by Express.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[ERROR]', err.message, err.stack);
-  res.status(500).json({ success: false, error: err.message ?? 'Internal server error' });
+  console.error('[API Error]', err.message, err.stack);
+  res.status(500).json({
+    success: false,
+    error:
+      process.env.NODE_ENV === 'production'
+        ? 'Internal server error'
+        : err.message,
+  });
 });
 
-// -----------------------------------------------------------------------
-// Start server
-// -----------------------------------------------------------------------
+// ─── Start server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`NORAM API running on http://localhost:${PORT}`);
+  console.log(`[noram-api] Listening on http://localhost:${PORT}`);
+  console.log(`[noram-api] Health check: http://localhost:${PORT}/health`);
 });
 
 export default app;

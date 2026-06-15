@@ -4,42 +4,37 @@ import { parseFilters } from '../middleware/filters';
 
 const router = Router();
 
+const MOCK_REPS = [
+  { id: 'rep_1', name: 'Alice Johnson',  email: 'alice@checkout.com',  role: 'AE', salesRegion: 'US-East',    createdAt: '2022-01-10T00:00:00Z' },
+  { id: 'rep_2', name: 'Bob Martinez',   email: 'bob@checkout.com',    role: 'AE', salesRegion: 'US-West',    createdAt: '2021-06-15T00:00:00Z' },
+  { id: 'rep_3', name: 'Carol Lee',      email: 'carol@checkout.com',  role: 'AE', salesRegion: 'Canada',     createdAt: '2023-03-01T00:00:00Z' },
+  { id: 'rep_4', name: 'David Kim',      email: 'david@checkout.com',  role: 'AE', salesRegion: 'US-Central', createdAt: '2022-09-20T00:00:00Z' },
+];
+
+const MOCK_LEADERBOARD = MOCK_REPS.map((rep, i) => ({
+  rank: i + 1,
+  rep,
+  revenue: 280_000 - i * 35_000,
+  target: 300_000,
+  deals: 8 - i,
+}));
+
 /**
  * GET /api/leaderboard
+ * Returns ranked list of reps with revenue attainment and deals closed.
  *
- * Returns a ranked list of sales reps with their revenue actuals, deal counts,
- * and performance vs target for the selected period.
- *
- * Query params:
- *   - dateRange: 'MTD' | 'YTD' | 'CUSTOM' (standard dashboard filter)
- *   - tier?:     filter leaderboard to accounts of a specific tier
+ * Query params: dateRange, tier, repId
  */
-router.get('/', parseFilters, async (_req: Request, res: Response) => {
-  try {
-    // TODO: const leaderboard = await getLeaderboard(req.filters);
+router.get('/', parseFilters, (_req: Request, res: Response) => {
+  // TODO: const filters = req.parsedFilters;
+  // TODO: const leaderboard = await getLeaderboard(filters);
 
-    const mockReps = [
-      { id: 'rep-1', name: 'Alex Johnson',   email: 'alex.johnson@company.com',   role: 'AE', salesRegion: 'US-West',  createdAt: new Date().toISOString() },
-      { id: 'rep-2', name: 'Maria Garcia',   email: 'maria.garcia@company.com',   role: 'AE', salesRegion: 'US-East',  createdAt: new Date().toISOString() },
-      { id: 'rep-3', name: 'James Chen',     email: 'james.chen@company.com',     role: 'AE', salesRegion: 'Canada',   createdAt: new Date().toISOString() },
-      { id: 'rep-4', name: 'Sarah Williams', email: 'sarah.williams@company.com', role: 'AE', salesRegion: 'US-East',  createdAt: new Date().toISOString() },
-      { id: 'rep-5', name: 'David Kim',      email: 'david.kim@company.com',      role: 'AE', salesRegion: 'US-West',  createdAt: new Date().toISOString() },
-    ];
+  // Sort by revenue descending and re-rank
+  const sorted = [...MOCK_LEADERBOARD]
+    .sort((a, b) => b.revenue - a.revenue)
+    .map((entry, i) => ({ ...entry, rank: i + 1 }));
 
-    const leaderboard = mockReps
-      .map((rep, i) => ({
-        rep,
-        revenue: 120_000 - i * 15_000 + Math.round(Math.random() * 5_000),
-        target:  100_000,
-        deals:   8 - i,
-      }))
-      .sort((a, b) => b.revenue - a.revenue);
-
-    res.json({ success: true, data: leaderboard });
-  } catch (err) {
-    const error = err instanceof Error ? err.message : 'Unknown error';
-    res.status(500).json({ success: false, error });
-  }
+  res.json({ success: true, data: sorted });
 });
 
 export default router;

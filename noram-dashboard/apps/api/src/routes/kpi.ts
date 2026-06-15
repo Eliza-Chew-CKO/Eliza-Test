@@ -1,48 +1,59 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { parseFilters } from '../middleware/filters';
-// TODO: wire these stubs to real Prisma queries once the DB is seeded
 import { getKPISummary, getFinancialTrends } from '../services/revenueService';
 
-const router = Router();
+export const kpiRouter = Router();
 
 /**
  * GET /api/kpi/summary
  *
- * Returns a KPISummary object for the requested period and optional rep / tier filters.
+ * Returns the top-level KPI summary for the Executive Summary section.
  *
- * Query params:
+ * Query params (parsed by parseFilters middleware):
  *   - dateRange: 'MTD' | 'YTD' | 'CUSTOM'
- *   - startDate?: ISO date string (required when dateRange === 'CUSTOM')
- *   - endDate?:   ISO date string (required when dateRange === 'CUSTOM')
+ *   - startDate?: ISO date string (required when dateRange = CUSTOM)
+ *   - endDate?:   ISO date string (required when dateRange = CUSTOM)
  *   - repId?:     string — filter to a single sales rep
  *   - tier?:      'Enterprise' | 'Mid-Market' | 'SMB'
+ *
+ * Response shape matches the KPISummary interface from @noram/web/src/types.
  */
-router.get('/summary', parseFilters, async (req: Request, res: Response) => {
-  try {
-    const filters = (req as any).filters;
-    // TODO: replace mock with: const data = await getKPISummary(filters);
-    const data = await getKPISummary(filters);
-    res.json({ success: true, data });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+kpiRouter.get(
+  '/summary',
+  parseFilters,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // TODO: wire to revenueService.getKPISummary once Prisma models are ready
+      const filters = (req as any).dashboardFilters;
+      const summary = await getKPISummary(filters);
+
+      res.json({ success: true, data: summary });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 /**
  * GET /api/kpi/trends
  *
- * Returns monthly revenue actuals vs targets for charting.
- * Shape: { month: 'Jan 2025', actual: number, target: number, tpv: number }[]
+ * Returns month-by-month revenue actuals vs targets for the Financial Trends charts.
+ * Also includes TPV per month.
+ *
+ * Same query params as /summary.
  */
-router.get('/trends', parseFilters, async (req: Request, res: Response) => {
-  try {
-    const filters = (req as any).filters;
-    // TODO: replace mock with real FinancialActual + Target aggregation
-    const data = await getFinancialTrends(filters);
-    res.json({ success: true, data });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+kpiRouter.get(
+  '/trends',
+  parseFilters,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // TODO: wire to revenueService.getFinancialTrends once Prisma models are ready
+      const filters = (req as any).dashboardFilters;
+      const trends = await getFinancialTrends(filters);
 
-export default router;
+      res.json({ success: true, data: trends });
+    } catch (err) {
+      next(err);
+    }
+  },
+);

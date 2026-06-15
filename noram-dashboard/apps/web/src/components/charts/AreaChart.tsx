@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ResponsiveContainer,
   AreaChart as RechartsAreaChart,
   Area,
   XAxis,
@@ -9,9 +8,12 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ResponsiveContainer,
   defs,
+  linearGradient,
+  stop,
 } from 'recharts';
-import { formatCompact } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 
 interface AreaConfig {
   key: string;
@@ -21,32 +23,43 @@ interface AreaConfig {
 }
 
 interface AreaChartProps {
-  data: Array<{ [key: string]: unknown }>;
+  data: Record<string, any>[];
   areas: AreaConfig[];
   height?: number;
   xAxisKey?: string;
-  yAxisFormatter?: (value: number) => string;
+  yAxisCurrency?: boolean;
 }
 
 export default function AreaChart({
   data,
   areas,
-  height = 300,
+  height = 320,
   xAxisKey = 'month',
-  yAxisFormatter = formatCompact,
+  yAxisCurrency = true,
 }: AreaChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <RechartsAreaChart
         data={data}
-        margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+        margin={{ top: 8, right: 16, left: 16, bottom: 4 }}
       >
-        {/* Gradient definitions for each area */}
+        {/* Define gradient fills for each area series */}
         <defs>
-          {areas.map(({ key, color }) => (
-            <linearGradient key={key} id={`gradient-${key}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor={color} stopOpacity={0.25} />
-              <stop offset="95%" stopColor={color} stopOpacity={0.02} />
+          {areas.map((area) => (
+            <linearGradient
+              key={`grad-${area.key}`}
+              id={`gradient-${area.key}`}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop
+                offset="5%"
+                stopColor={area.color}
+                stopOpacity={area.fillOpacity ?? 0.25}
+              />
+              <stop offset="95%" stopColor={area.color} stopOpacity={0.02} />
             </linearGradient>
           ))}
         </defs>
@@ -54,46 +67,50 @@ export default function AreaChart({
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
         <XAxis
           dataKey={xAxisKey}
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          tick={{ fontSize: 12, fill: '#9ca3af' }}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tickFormatter={yAxisFormatter}
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          tick={{ fontSize: 12, fill: '#9ca3af' }}
           axisLine={false}
           tickLine={false}
-          width={60}
+          tickFormatter={(v: number) =>
+            yAxisCurrency ? formatCurrency(v, 'USD', true) : String(v)
+          }
+          width={70}
         />
         <Tooltip
-          formatter={(value: number, name: string) => [
-            formatCompact(value),
-            name,
-          ]}
           contentStyle={{
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-            fontSize: '13px',
+            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+            fontSize: 13,
+          }}
+          formatter={(value: number, name: string) => {
+            const label = areas.find((a) => a.key === name)?.label ?? name;
+            return [
+              yAxisCurrency ? formatCurrency(value) : value,
+              label,
+            ];
           }}
         />
         <Legend
-          iconType="circle"
-          iconSize={8}
-          wrapperStyle={{ fontSize: '13px', paddingTop: '12px' }}
+          wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+          formatter={(value: string) =>
+            areas.find((a) => a.key === value)?.label ?? value
+          }
         />
-        {areas.map(({ key, color, label, fillOpacity = 0.8 }) => (
+        {areas.map((area) => (
           <Area
-            key={key}
+            key={area.key}
             type="monotone"
-            dataKey={key}
-            name={label}
-            stroke={color}
+            dataKey={area.key}
+            stroke={area.color}
             strokeWidth={2.5}
-            fill={`url(#gradient-${key})`}
-            fillOpacity={fillOpacity}
+            fill={`url(#gradient-${area.key})`}
             dot={false}
-            activeDot={{ r: 4, strokeWidth: 0, fill: color }}
+            activeDot={{ r: 5, fill: area.color, strokeWidth: 0 }}
           />
         ))}
       </RechartsAreaChart>

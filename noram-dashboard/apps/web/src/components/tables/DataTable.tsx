@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -9,24 +10,25 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
-interface DataTableProps<TData> {
-  data: TData[];
-  columns: ColumnDef<TData>[];
+interface DataTableProps<T> {
+  data: T[];
+  columns: ColumnDef<T, any>[];
   isLoading?: boolean;
   pageSize?: number;
+  className?: string;
 }
 
 const SKELETON_ROWS = 5;
 
-export default function DataTable<TData>({
+export function DataTable<T>({
   data,
   columns,
   isLoading = false,
   pageSize = 10,
-}: DataTableProps<TData>) {
+  className,
+}: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
   const table = useReactTable({
@@ -37,19 +39,17 @@ export default function DataTable<TData>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize } },
+    initialState: {
+      pagination: { pageSize },
+    },
   });
 
-  const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
-  const totalRows = table.getFilteredRowModel().rows.length;
-  const from = pageIndex * currentPageSize + 1;
-  const to = Math.min((pageIndex + 1) * currentPageSize, totalRows);
-
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+    <div className={cn('flex flex-col gap-3', className)}>
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-neutral-200">
+      <div className="overflow-x-auto rounded-lg border border-neutral-200">
+        <table className="min-w-full divide-y divide-neutral-200 text-sm">
+          {/* Header */}
           <thead className="bg-neutral-50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -58,13 +58,17 @@ export default function DataTable<TData>({
                     key={header.id}
                     scope="col"
                     className={cn(
-                      'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500',
-                      header.column.getCanSort() && 'cursor-pointer select-none hover:text-neutral-900'
+                      'px-4 py-3 text-left text-xs font-semibold text-neutral-500 uppercase tracking-wide select-none whitespace-nowrap',
+                      header.column.getCanSort() &&
+                        'cursor-pointer hover:text-neutral-700',
                     )}
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <span className="flex items-center gap-1">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
                       {header.column.getCanSort() && (
                         <span className="text-neutral-300">
                           {header.column.getIsSorted() === 'asc'
@@ -81,56 +85,86 @@ export default function DataTable<TData>({
             ))}
           </thead>
 
+          {/* Body */}
           <tbody className="divide-y divide-neutral-100 bg-white">
             {isLoading
-              ? // Skeleton rows
-                Array.from({ length: SKELETON_ROWS }).map((_, rowIdx) => (
-                  <tr key={rowIdx}>
-                    {columns.map((_, colIdx) => (
-                      <td key={colIdx} className="px-4 py-3">
-                        <div className="skeleton h-4 w-full" />
+              ? Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+                  <tr key={`skeleton-${i}`}>
+                    {columns.map((_, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="skeleton h-4 rounded w-full max-w-[120px]" />
                       </td>
                     ))}
                   </tr>
                 ))
               : table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                  <tr
+                    key={row.id}
+                    className="hover:bg-neutral-50 transition-colors"
+                  >
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="whitespace-nowrap px-4 py-3 text-sm text-neutral-800">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      <td
+                        key={cell.id}
+                        className="px-4 py-3 text-neutral-700 whitespace-nowrap"
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
                       </td>
                     ))}
                   </tr>
                 ))}
+
+            {!isLoading && data.length === 0 && (
+              <tr>
+                <td
+                  colSpan={columns.length}
+                  className="px-4 py-12 text-center text-sm text-neutral-400"
+                >
+                  No data available
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
       {/* Pagination */}
-      {!isLoading && totalRows > 0 && (
-        <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3">
-          <p className="text-xs text-neutral-500">
-            Showing {from}–{to} of {totalRows} rows
-          </p>
+      {!isLoading && table.getPageCount() > 1 && (
+        <div className="flex items-center justify-between px-1 text-sm">
+          <span className="text-neutral-500">
+            Page {table.getState().pagination.pageIndex + 1} of{' '}
+            {table.getPageCount()} &mdash; {data.length} total rows
+          </span>
           <div className="flex items-center gap-1">
             <button
-              type="button"
+              onClick={() => table.setPageIndex(0)}
+              disabled={!table.getCanPreviousPage()}
+              className="rounded px-2 py-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+            >
+              «
+            </button>
+            <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="rounded px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+              className="rounded px-2 py-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
             >
-              ← Prev
+              ‹
             </button>
-            <span className="px-2 text-xs text-neutral-500">
-              Page {pageIndex + 1} / {table.getPageCount()}
-            </span>
             <button
-              type="button"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="rounded px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+              className="rounded px-2 py-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
             >
-              Next →
+              ›
+            </button>
+            <button
+              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+              disabled={!table.getCanNextPage()}
+              className="rounded px-2 py-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+            >
+              »
             </button>
           </div>
         </div>

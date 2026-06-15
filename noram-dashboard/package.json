@@ -1,6 +1,5 @@
 {
   "name": "noram-dashboard",
-  "version": "1.0.0",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -10,11 +9,16 @@
     "dev": "npm run dev --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "db:generate": "npm run generate --workspace=packages/db",
-    "db:migrate": "npm run migrate --workspace=packages/db",
-    "db:studio": "npm run studio --workspace=packages/db"
+    "test": "npm run test --workspaces --if-present",
+    "migrate": "cd packages/db && npx prisma migrate dev",
+    "generate": "cd packages/db && npx prisma generate",
+    "studio": "cd packages/db && npx prisma studio"
   },
   "devDependencies": {
     "typescript": "~5.3.3"
+  },
+  "engines": {
+    "node": ">=18.17.0",
+    "npm": ">=9.0.0"
   }
 }

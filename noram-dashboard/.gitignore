@@ -1,57 +1,46 @@
-# Dependencies
+# ─── Node / npm ───────────────────────────────────────────────────────────────
 node_modules/
-.pnp
-.pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
 
-# Next.js
+# ─── Next.js ─────────────────────────────────────────────────────────────────
 .next/
 out/
 
-# Build outputs
+# ─── Build outputs ────────────────────────────────────────────────────────────
 dist/
 build/
+*.tsbuildinfo
 
-# Environment files — never commit secrets
+# ─── Environment variables ───────────────────────────────────────────────────
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# ─── Prisma ───────────────────────────────────────────────────────────────────
+# Keep prisma/schema.prisma in version control
+# Keep migrations directory for reproducible deploys (include *.sql)
+prisma/migrations/
+# but NOT the generated client (rebuilt via prisma generate)
+packages/db/src/generated/
 
-# Prisma — keep schema.prisma, ignore generated migrations lock
-# (uncomment the next line if you do NOT want to track migrations)
-# prisma/migrations/
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Coverage reports
+# ─── Testing ─────────────────────────────────────────────────────────────────
 coverage/
 .nyc_output/
 
-# Turbo
+# ─── Tooling ──────────────────────────────────────────────────────────────────
 .turbo/
+.eslintcache
+.DS_Store
+Thumbs.db
 
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# Editor directories
-.vscode/
+# ─── Editor ───────────────────────────────────────────────────────────────────
+.vscode/settings.json
 .idea/
 *.swp
 *.swo
-
-# Misc
-.cache/
-tmp/
-temp/

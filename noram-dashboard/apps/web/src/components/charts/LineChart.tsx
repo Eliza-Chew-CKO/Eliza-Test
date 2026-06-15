@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ResponsiveContainer,
   LineChart as RechartsLineChart,
   Line,
   XAxis,
@@ -9,8 +8,9 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ResponsiveContainer,
 } from 'recharts';
-import { formatCompact } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 
 interface LineConfig {
   key: string;
@@ -19,65 +19,73 @@ interface LineConfig {
 }
 
 interface LineChartProps {
-  data: Array<{ month: string; [key: string]: unknown }>;
+  data: Record<string, any>[];
   lines: LineConfig[];
   height?: number;
-  yAxisFormatter?: (value: number) => string;
+  /** If true, Y-axis ticks are formatted as currency */
+  yAxisCurrency?: boolean;
+  xAxisKey?: string;
 }
 
 export default function LineChart({
   data,
   lines,
-  height = 300,
-  yAxisFormatter = formatCompact,
+  height = 320,
+  yAxisCurrency = true,
+  xAxisKey = 'month',
 }: LineChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <RechartsLineChart
         data={data}
-        margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+        margin={{ top: 8, right: 16, left: 16, bottom: 4 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
         <XAxis
-          dataKey="month"
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          dataKey={xAxisKey}
+          tick={{ fontSize: 12, fill: '#9ca3af' }}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
-          tickFormatter={yAxisFormatter}
-          tick={{ fontSize: 12, fill: '#6b7280' }}
+          tick={{ fontSize: 12, fill: '#9ca3af' }}
           axisLine={false}
           tickLine={false}
-          width={60}
+          tickFormatter={(v: number) =>
+            yAxisCurrency ? formatCurrency(v, 'USD', true) : String(v)
+          }
+          width={70}
         />
         <Tooltip
-          formatter={(value: number, name: string) => [
-            formatCompact(value),
-            name,
-          ]}
           contentStyle={{
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-            fontSize: '13px',
+            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+            fontSize: 13,
+          }}
+          formatter={(value: number, name: string) => {
+            const label = lines.find((l) => l.key === name)?.label ?? name;
+            return [
+              yAxisCurrency ? formatCurrency(value) : value,
+              label,
+            ];
           }}
         />
         <Legend
-          iconType="circle"
-          iconSize={8}
-          wrapperStyle={{ fontSize: '13px', paddingTop: '12px' }}
+          wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+          formatter={(value: string) =>
+            lines.find((l) => l.key === value)?.label ?? value
+          }
         />
-        {lines.map(({ key, color, label }) => (
+        {lines.map((line) => (
           <Line
-            key={key}
+            key={line.key}
             type="monotone"
-            dataKey={key}
-            name={label}
-            stroke={color}
+            dataKey={line.key}
+            stroke={line.color}
             strokeWidth={2.5}
-            dot={false}
-            activeDot={{ r: 4, strokeWidth: 0 }}
+            dot={{ r: 4, fill: line.color, strokeWidth: 0 }}
+            activeDot={{ r: 6 }}
           />
         ))}
       </RechartsLineChart>
