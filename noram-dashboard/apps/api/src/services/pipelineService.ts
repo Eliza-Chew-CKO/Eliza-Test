@@ -46,7 +46,7 @@ export async function getWeightedPipeline(filters: DashboardFilters): Promise<We
       snapshotDate: { gte: filters.startDate, lte: filters.endDate },
       stageName: { notIn: EXCLUDED_STAGES.map(s => s) },
       opportunity: {
-        accountName: { not: { contains: GOLIATH_ALIAS, mode: 'insensitive' } },
+        accountName: { not: GOLIATH_ALIAS },
         ...(filters.repName ? { salesRepName: { contains: filters.repName, mode: 'insensitive' } } : {}),
       },
     },
