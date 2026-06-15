@@ -1,4 +1,6 @@
-// ─── Core domain types ────────────────────────────────────────────────────────
+// ============================================================
+// Core domain types for the NORAM Sales Dashboard
+// ============================================================
 
 export interface User {
   id: string;
@@ -6,7 +8,7 @@ export interface User {
   email: string;
   role: string;
   salesRegion: string;
-  createdAt: string; // ISO date string
+  createdAt: string; // ISO date string from API
 }
 
 export interface Account {
@@ -16,7 +18,7 @@ export interface Account {
   isManaged: boolean;
   salesRepId: string;
   accountManagerId: string | null;
-  goLiveDate: string | null; // ISO date string
+  goLiveDate: string | null;
   region: string;
   referralPartner: string | null;
   sector: string | null;
@@ -35,7 +37,7 @@ export type OpportunityType = 'New Logo' | 'Expansion' | 'Renewal';
 
 export interface StageHistoryEntry {
   stage: OpportunityStage;
-  enteredAt: string; // ISO date string
+  enteredAt: string;
   exitedAt: string | null;
 }
 
@@ -48,7 +50,7 @@ export interface Opportunity {
   baseMonthlyRevenue: number;
   rollMonthlyRevenue: number;
   weightedExpectedMNR: number;
-  closeDate: string; // ISO date string
+  closeDate: string;
   goLiveDate: string | null;
   rating: string | null;
   secondOwnerId: string | null;
@@ -60,7 +62,7 @@ export interface Opportunity {
 export interface FinancialActual {
   id: string;
   accountId: string;
-  reportingMonth: string; // ISO date string (first day of month)
+  reportingMonth: string; // ISO date — first day of the month
   totalFees: number;
   grossFX: number;
   ccpExclusion: number;
@@ -90,7 +92,7 @@ export interface Target {
 export interface VampRecord {
   id: string;
   accountId: string;
-  reportingMonth: string; // ISO date string
+  reportingMonth: string;
   createdEvents: number;
   fraudEvents: number;
   totalCapturedEvents: number;
@@ -102,7 +104,9 @@ export interface VampRecord {
   createdAt: string;
 }
 
-// ─── Aggregated / computed types ──────────────────────────────────────────────
+// ============================================================
+// Aggregated / computed types for dashboard views
+// ============================================================
 
 export interface KPISummary {
   netRevenue: number;
@@ -114,20 +118,16 @@ export interface KPISummary {
   backbookRevenue: number;
   tpvAmount: number;
   goLiveCount: number;
-  vampRatioAvg: number;
+  vampRatio?: number;
 }
-
-// ─── Dashboard filter state ───────────────────────────────────────────────────
 
 export interface DashboardFilters {
   dateRange: 'MTD' | 'YTD' | 'CUSTOM';
   startDate?: string; // ISO date string, used when dateRange === 'CUSTOM'
-  endDate?: string;   // ISO date string, used when dateRange === 'CUSTOM'
-  repId: string | null;
-  tier: string | null;
+  endDate?: string;
+  repId?: string | null;
+  tier?: string | null;
 }
-
-// ─── API response wrapper ─────────────────────────────────────────────────────
 
 export interface ApiResponse<T> {
   data: T;
@@ -135,9 +135,11 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// ─── Leaderboard entry ────────────────────────────────────────────────────────
+// ============================================================
+// Table / leaderboard row shapes
+// ============================================================
 
-export interface LeaderboardEntry {
+export interface LeaderboardRow {
   rank: number;
   rep: User;
   revenue: number;
@@ -145,10 +147,14 @@ export interface LeaderboardEntry {
   deals: number;
 }
 
-// ─── Trend chart data point ───────────────────────────────────────────────────
-
-export interface TrendDataPoint {
-  month: string; // "Jan 2025"
+export interface FinancialTrendPoint {
+  month: string;     // "Jan 2025"
   actual: number;
   target: number;
+}
+
+export interface PipelineFunnelStage {
+  stage: string;
+  count: number;
+  value: number;
 }

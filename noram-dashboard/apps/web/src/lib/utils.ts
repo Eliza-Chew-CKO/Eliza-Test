@@ -1,126 +1,70 @@
-import { clsx, type ClassValue } from 'clsx';
+import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { format, getDaysInMonth } from 'date-fns';
-
-// ─── Class name helper ────────────────────────────────────────────────────────
 
 /**
- * Merges Tailwind class names, resolving conflicts via tailwind-merge.
- * Accepts any value accepted by clsx (strings, arrays, objects).
+ * Merge Tailwind CSS class names safely, resolving conflicts via tailwind-merge.
  */
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-// ─── Currency formatter ───────────────────────────────────────────────────────
-
 /**
- * Formats a numeric value as a currency string.
- * Defaults to USD. Uses compact notation for large values (>= 1,000,000).
- *
- * @example
- *   formatCurrency(1500000)     // "$1.5M"
- *   formatCurrency(75000)       // "$75,000"
- *   formatCurrency(99.5, 'GBP') // "£99.50"
+ * Format a number as USD currency using Intl.NumberFormat.
+ * @param value - Numeric value to format
+ * @param currency - ISO 4217 currency code (default: 'USD')
  */
 export function formatCurrency(value: number, currency = 'USD'): string {
-  if (Math.abs(value) >= 1_000_000) {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      notation: 'compact',
-      maximumFractionDigits: 2,
-    }).format(value);
-  }
-
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
 }
 
-// ─── Percentage formatter ─────────────────────────────────────────────────────
-
 /**
- * Formats a ratio (0–1) or a percentage value as a readable percentage string.
- * Automatically detects whether the value is a ratio (< 2) or a percentage.
- *
- * @example
- *   formatPct(0.123)    // "12.3%"
- *   formatPct(85.6, 0) // "86%"
+ * Format a decimal ratio as a percentage string.
+ * @param value - Decimal ratio (e.g. 0.154 → "15.4%")
+ * @param decimals - Number of decimal places (default: 1)
  */
 export function formatPct(value: number, decimals = 1): string {
-  const pct = Math.abs(value) < 2 ? value * 100 : value;
-  return `${pct.toFixed(decimals)}%`;
+  return `${(value * 100).toFixed(decimals)}%`;
 }
 
-// ─── Variance calculator ──────────────────────────────────────────────────────
-
 /**
- * Calculates absolute and percentage variance between actual and target.
- * Returns positive values when actual > target.
+ * Calculate variance between actual and target values.
+ * @returns absolute difference and percentage variance as a decimal
  */
-export function calcVariance(
-  actual: number,
-  target: number,
-): { absolute: number; pct: number } {
+export function calcVariance(actual: number, target: number): { absolute: number; pct: number } {
+  if (target === 0) return { absolute: actual, pct: 0 };
   const absolute = actual - target;
-  const pct = target === 0 ? 0 : (absolute / target) * 100;
+  const pct = absolute / target;
   return { absolute, pct };
 }
 
-// ─── Run rate calculator ──────────────────────────────────────────────────────
-
 /**
- * Projects a month-to-date value to an end-of-month run rate.
- *
- * @param mtdValue     - Value accumulated so far this month
- * @param dayOfMonth   - Current calendar day (1–31)
- * @param daysInMonth  - Total days in the current month
- * @returns Projected full-month value
+ * Extrapolate a run-rate for the full month based on MTD progress.
+ * @param mtdValue - Month-to-date cumulative value
+ * @param dayOfMonth - Current day number (1–31)
+ * @param daysInMonth - Total days in the current month
  */
-export function getRunRate(
-  mtdValue: number,
-  dayOfMonth: number,
-  daysInMonth: number,
-): number {
-  if (dayOfMonth <= 0) return 0;
+export function getRunRate(mtdValue: number, dayOfMonth: number, daysInMonth: number): number {
+  if (dayOfMonth === 0) return 0;
   return (mtdValue / dayOfMonth) * daysInMonth;
 }
 
 /**
- * Convenience wrapper that calculates run rate from a Date object.
- */
-export function getRunRateFromDate(mtdValue: number, asOf: Date = new Date()): number {
-  const day = asOf.getDate();
-  const total = getDaysInMonth(asOf);
-  return getRunRate(mtdValue, day, total);
-}
-
-// ─── Month formatter ──────────────────────────────────────────────────────────
-
-/**
- * Formats a date to "Mon YYYY" label for chart axes.
- *
- * @example
- *   formatMonth(new Date('2025-01-15')) // "Jan 2025"
- *   formatMonth('2025-06-01')           // "Jun 2025"
+ * Format a Date (or ISO string) as "Jan 2025".
  */
 export function formatMonth(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return format(d, 'MMM yyyy');
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-// ─── Number formatter ─────────────────────────────────────────────────────────
-
 /**
- * Formats a plain number with thousands separators.
+ * Return a Tailwind text colour class based on variance sign.
  */
-export function formatNumber(value: number, decimals = 0): string {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value);
+export function varianceColor(value: number): string {
+  if (value >= 0) return 'text-green-400';
+  if (value >= -0.05) return 'text-yellow-400';
+  return 'text-red-400';
 }
