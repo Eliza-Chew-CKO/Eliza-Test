@@ -3,6 +3,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import { getBigQuery, BQ } from './lib/bigquery';
 
 // Route imports
 import kpiRouter from './routes/kpi';
@@ -77,9 +78,17 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // ─── Start server ─────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`[noram-api] Listening on http://localhost:${PORT}`);
-  console.log(`[noram-api] Health check: http://localhost:${PORT}/health`);
-});
+getBigQuery()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`[noram-api] Listening on http://localhost:${PORT}`);
+      console.log(`[noram-api] Health check: http://localhost:${PORT}/health`);
+      console.log(`[noram-api] BigQuery dataset: ${BQ.project}.${BQ.dataset}`);
+    });
+  })
+  .catch((err: Error) => {
+    console.error('[noram-api] Failed to initialise BigQuery client:', err.message);
+    process.exit(1);
+  });
 
 export default app;

@@ -1,14 +1,84 @@
-import { Prisma, prisma } from '../lib/prisma';
+import { runQuery, tbl, BQ } from '../lib/bigquery';
 import { DashboardFilters, lastCompletedMonthStart } from '../middleware/filters';
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 export interface RepLeaderboardRow {
   rank: number;
   repName: string;
   mrYTD: number;
   mrLastMonth: number;
-  mrYTDPct: number;   // 0–1 relative to top rep (for inline bar)
+  mrYTDPct: number;
   tpvYTD: number;
   dealCount: number;
+}
+
+export async function getRepMRLeaderboard(filters: DashboardFilters): Promise<RepLeaderboardRow[]> {
+  const { startDate, endDate, tier } = filters;
+  const lcmStart = lastCompletedMonthStart();
+  const lcmEnd   = new Date(Date.UTC(lcmStart.getUTCFullYear(), lcmStart.getUTCMonth() + 1, 0));
+
+  const tierClause = tier ? `AND tier = @tier` : '';
+
+  const sql = `
+    WITH financials AS (
+      SELECT
+        sales_rep_name,
+        SUM(IF(reporting_month BETWEEN @sd AND @ed, total_fee_inc_gross_fx, 0))  AS mr_ytd,
+        SUM(IF(reporting_month BETWEEN @lcms AND @lcme, total_fee_inc_gross_fx, 0)) AS mr_last_month,
+        SUM(IF(reporting_month BETWEEN @sd AND @ed, tpv_amount, 0))              AS tpv_ytd
+      FROM ${tbl(BQ.financials)}
+      WHERE go_live_region = 'NORAM'
+        AND NOT UPPER(IFNULL(referral_partner, '')) LIKE '%SOLIDGATE%'
+        ${tierClause}
+      GROUP BY sales_rep_name
+    ),
+    deals AS (
+      SELECT
+        sales_rep_name,
+        COUNT(*) AS deal_count
+      FROM ${tbl(BQ.opportunities)}
+      WHERE normalized_stage = 'CLOSED_WON'
+        AND close_date BETWEEN @sd AND @ed
+      GROUP BY sales_rep_name
+    )
+    SELECT
+      f.sales_rep_name AS rep_name,
+      f.mr_ytd,
+      f.mr_last_month,
+      f.tpv_ytd,
+      COALESCE(d.deal_count, 0) AS deal_count
+    FROM financials f
+    LEFT JOIN deals d USING (sales_rep_name)
+    WHERE f.sales_rep_name IS NOT NULL AND f.mr_ytd > 0
+    ORDER BY f.mr_ytd DESC
+  `;
+
+  const params: Record<string, unknown> = {
+    sd:   isoDate(startDate),
+    ed:   isoDate(endDate),
+    lcms: isoDate(lcmStart),
+    lcme: isoDate(lcmEnd),
+  };
+  if (tier) params.tier = tier;
+
+  const rows = await runQuery<{
+    rep_name: string; mr_ytd: number; mr_last_month: number; tpv_ytd: number; deal_count: number;
+  }>(sql, params);
+
+  const maxMR = rows.length > 0 ? Number(rows[0].mr_ytd) : 1;
+
+  return rows.map((r, i) => ({
+    rank:        i + 1,
+    repName:     r.rep_name,
+    mrYTD:       Number(r.mr_ytd),
+    mrLastMonth: Number(r.mr_last_month),
+    mrYTDPct:    Number(r.mr_ytd) / maxMR,
+    tpvYTD:      Number(r.tpv_ytd),
+    dealCount:   Number(r.deal_count),
+  }));
 }
 
 export interface ActivityLeaderboardRow {
@@ -17,107 +87,42 @@ export interface ActivityLeaderboardRow {
   count: number;
 }
 
-// ─── Rep MR leaderboard ───────────────────────────────────────────────────────
-
-export async function getRepMRLeaderboard(filters: DashboardFilters): Promise<RepLeaderboardRow[]> {
-  const { startDate, endDate, tier } = filters;
-  const lcmStart = lastCompletedMonthStart();
-  const lcmEnd   = new Date(Date.UTC(lcmStart.getUTCFullYear(), lcmStart.getUTCMonth() + 1, 0));
-
-  const baseWhere = (dateFrom: Date, dateTo: Date): Prisma.FinancialActualWhereInput => ({
-    reportingMonth: { gte: dateFrom, lte: dateTo },
-    ...(tier ? { tier: tier as any } : {}),
-    account: {
-      NOT: { referralPartner: { contains: 'SOLIDGATE', mode: 'insensitive' } },
-    },
-  });
-
-  // YTD aggregation by salesRepName
-  const ytdRows = await prisma.financialActual.groupBy({
-    by: ['salesRepName'],
-    where: baseWhere(startDate, endDate),
-    _sum: { totalFeeIncGrossFX: true, tpvAmount: true },
-    orderBy: { _sum: { totalFeeIncGrossFX: 'desc' } },
-  });
-
-  // Last month aggregation by salesRepName
-  const lmRows = await prisma.financialActual.groupBy({
-    by: ['salesRepName'],
-    where: baseWhere(lcmStart, lcmEnd),
-    _sum: { totalFeeIncGrossFX: true },
-  });
-
-  // Deal count (closed won opps)
-  const dealCounts = await prisma.opportunity.groupBy({
-    by: ['salesRepName'],
-    where: {
-      normalizedStage: 'CLOSED_WON',
-      closeDate: { gte: startDate, lte: endDate },
-    },
-    _count: { id: true },
-  });
-
-  const lmMap = new Map(lmRows.map(r => [r.salesRepName, Number(r._sum.totalFeeIncGrossFX ?? 0)]));
-  const dealMap = new Map(dealCounts.map(r => [r.salesRepName, r._count.id]));
-
-  const rows = ytdRows
-    .filter(r => r.salesRepName)
-    .map(r => ({
-      repName: r.salesRepName!,
-      mrYTD: Number(r._sum.totalFeeIncGrossFX ?? 0),
-      mrLastMonth: lmMap.get(r.salesRepName!) ?? 0,
-      tpvYTD: Number(r._sum.tpvAmount ?? 0),
-      dealCount: dealMap.get(r.salesRepName!) ?? 0,
-    }));
-
-  const maxMR = rows[0]?.mrYTD ?? 1;
-
-  return rows.map((r, i) => ({
-    rank: i + 1,
-    ...r,
-    mrYTDPct: r.mrYTD / maxMR,
-  }));
-}
-
-// ─── Activity leaderboards (Top 10 by pipeline stage) ─────────────────────────
-
 type ActivityStage = 'explore' | 'propose' | 'trade' | 'handover';
 
-export async function getActivityLeaderboard(stage: ActivityStage, filters: DashboardFilters): Promise<ActivityLeaderboardRow[]> {
-  const { startDate, endDate, repName } = filters;
+const STAGE_DATE_FIELD: Record<ActivityStage, string> = {
+  explore:  'first_explore_meeting_date',
+  propose:  'date_set_to_propose',
+  trade:    'date_set_to_trade',
+  handover: 'date_set_to_handover',
+};
 
-  const repFilter = repName
-    ? { salesRepName: { contains: repName, mode: 'insensitive' as const } }
-    : {};
+export async function getActivityLeaderboard(
+  stage: ActivityStage,
+  filters: DashboardFilters,
+): Promise<ActivityLeaderboardRow[]> {
+  const field = STAGE_DATE_FIELD[stage];
+  const repClause = filters.repName ? `AND LOWER(sales_rep_name) LIKE LOWER(@rep)` : '';
 
-  const dateField: Record<ActivityStage, string> = {
-    explore:  'firstExploreMeetingDate',
-    propose:  'dateSetToPropose',
-    trade:    'dateSetToTrade',
-    handover: 'dateSetToHandover',
+  const sql = `
+    SELECT sales_rep_name AS rep_name, COUNT(*) AS cnt
+    FROM ${tbl(BQ.opportunities)}
+    WHERE ${field} BETWEEN @start AND @end
+      AND is_noram = TRUE
+      ${repClause}
+    GROUP BY rep_name
+    ORDER BY cnt DESC
+    LIMIT 10
+  `;
+
+  const params: Record<string, unknown> = {
+    start: isoDate(filters.startDate),
+    end:   isoDate(filters.endDate),
   };
+  if (filters.repName) params.rep = `%${filters.repName}%`;
 
-  // Prisma doesn't support groupBy on relation fields directly;
-  // use raw query to group by salesRepName and count within date window.
-  const field = dateField[stage];
-
-  const rows = await prisma.opportunity.groupBy({
-    by: ['salesRepName'],
-    where: {
-      [field]: { gte: startDate, lte: endDate },
-      isNoram: true,
-      ...repFilter,
-    },
-    _count: { id: true },
-    orderBy: { _count: { id: 'desc' } },
-    take: 10,
-  });
+  const rows = await runQuery<{ rep_name: string; cnt: number }>(sql, params);
 
   return rows
-    .filter(r => r.salesRepName)
-    .map((r, i) => ({
-      rank: i + 1,
-      repName: r.salesRepName!,
-      count: r._count.id,
-    }));
+    .filter(r => r.rep_name)
+    .map((r, i) => ({ rank: i + 1, repName: r.rep_name, count: Number(r.cnt) }));
 }

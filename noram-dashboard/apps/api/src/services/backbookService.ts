@@ -1,9 +1,11 @@
-import { Prisma, prisma } from '../lib/prisma';
-import { DashboardFilters, lastCompletedMonthStart, subMonths } from '../middleware/filters';
+import { runQuery, tbl, BQ } from '../lib/bigquery';
+import { DashboardFilters, lastCompletedMonthStart } from '../middleware/filters';
 
-const SOLIDGATE_FILTER = { NOT: { referralPartner: { contains: 'SOLIDGATE', mode: Prisma.QueryMode.insensitive } } };
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
-// ─── Account-level backbook performance ───────────────────────────────────────
+// ─── Backbook account-level performance ───────────────────────────────────────
 
 export interface BackbookClientRow {
   alias: string;
@@ -12,6 +14,7 @@ export interface BackbookClientRow {
   rating: string | null;
   accountManager: string | null;
   salesRep: string | null;
+  isManaged: boolean;
   qtdMR: number;
   mrYTD: number;
   mrLastMonth: number;
@@ -26,88 +29,109 @@ async function fetchBackbookAccounts(
   isManaged: boolean,
 ): Promise<BackbookClientRow[]> {
   const { startDate, endDate, tier, repName } = filters;
-  const now = new Date();
-
-  // QTD start = first day of current quarter
-  const qMonth = Math.floor(now.getUTCMonth() / 3) * 3;
-  const qtdStart = new Date(Date.UTC(now.getUTCFullYear(), qMonth, 1));
-
-  // Last completed month
+  const now      = new Date();
+  const qMonth   = Math.floor(now.getUTCMonth() / 3) * 3;
+  const qtdStart = isoDate(new Date(Date.UTC(now.getUTCFullYear(), qMonth, 1)));
   const lcmStart = lastCompletedMonthStart();
   const lcmEnd   = new Date(Date.UTC(lcmStart.getUTCFullYear(), lcmStart.getUTCMonth() + 1, 0));
+  const yoyStart = isoDate(new Date(Date.UTC(startDate.getUTCFullYear() - 1, 0, 1)));
+  const yoyEnd   = isoDate(new Date(Date.UTC(startDate.getUTCFullYear() - 1, endDate.getUTCMonth(), endDate.getUTCDate())));
 
-  // Same YTD period last year
-  const yoyStart = new Date(Date.UTC(startDate.getUTCFullYear() - 1, 0, 1));
-  const yoyEnd   = new Date(Date.UTC(startDate.getUTCFullYear() - 1, endDate.getUTCMonth(), endDate.getUTCDate()));
+  const tierClause = tier    ? `AND tier = @tier`                             : '';
+  const repClause  = repName ? `AND LOWER(sales_rep_name) LIKE LOWER(@rep)` : '';
 
-  const accountWhere: Prisma.AccountWhereInput = {
+  const sql = `
+    WITH base AS (
+      SELECT
+        alias,
+        account_name,
+        tier,
+        rating,
+        account_manager_name AS account_manager,
+        sales_rep_name       AS sales_rep,
+        total_fee_inc_gross_fx,
+        tpv_amount,
+        reporting_month
+      FROM ${tbl(BQ.financials)}
+      WHERE book_type = 'BACKBOOK'
+        AND go_live_date < '2026-01-01'
+        AND go_live_region = 'NORAM'
+        AND NOT UPPER(IFNULL(referral_partner, '')) LIKE '%SOLIDGATE%'
+        AND is_managed = @isManaged
+        ${tierClause}
+        ${repClause}
+    )
+    SELECT
+      alias,
+      ANY_VALUE(account_name)      AS account_name,
+      ANY_VALUE(tier)              AS tier,
+      ANY_VALUE(rating)            AS rating,
+      ANY_VALUE(account_manager)   AS account_manager,
+      ANY_VALUE(sales_rep)         AS sales_rep,
+      COALESCE(SUM(IF(reporting_month BETWEEN @sd AND @ed, total_fee_inc_gross_fx, 0)), 0) AS mr_ytd,
+      COALESCE(SUM(IF(reporting_month BETWEEN @qtds AND @ed, total_fee_inc_gross_fx, 0)), 0) AS qtd_mr,
+      COALESCE(SUM(IF(reporting_month BETWEEN @lcms AND @lcme, total_fee_inc_gross_fx, 0)), 0) AS mr_last_month,
+      COALESCE(SUM(IF(reporting_month BETWEEN @yoys AND @yoye, total_fee_inc_gross_fx, 0)), 0) AS mr_yoy,
+      COALESCE(SUM(IF(reporting_month BETWEEN @sd AND @ed, tpv_amount, 0)), 0)              AS tpv_ytd,
+      COALESCE(SUM(IF(reporting_month BETWEEN @lcms AND @lcme, tpv_amount, 0)), 0)          AS tpv_last_month
+    FROM base
+    GROUP BY alias
+    HAVING mr_ytd > 0
+    ORDER BY mr_ytd DESC
+  `;
+
+  const amTgtSql = `
+    SELECT alias, CAST(revenue_target AS FLOAT64) AS revenue_target
+    FROM ${tbl(BQ.amTargets)}
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY alias ORDER BY quarter DESC) = 1
+  `;
+
+  const params: Record<string, unknown> = {
     isManaged,
-    ...SOLIDGATE_FILTER,
-    goLiveDate: { lt: new Date('2026-01-01') },
-    ...(tier ? { tier: tier as any } : {}),
-    ...(repName ? { salesRep: { fullName: { contains: repName, mode: 'insensitive' } } } : {}),
+    sd:   isoDate(startDate),
+    ed:   isoDate(endDate),
+    qtds: qtdStart,
+    lcms: isoDate(lcmStart),
+    lcme: isoDate(lcmEnd),
+    yoys: yoyStart,
+    yoye: yoyEnd,
   };
+  if (tier)    params.tier = tier;
+  if (repName) params.rep  = `%${repName}%`;
 
-  const accounts = await prisma.account.findMany({
-    where: accountWhere,
-    include: {
-      salesRep: { select: { fullName: true } },
-      accountManager: { select: { fullName: true } },
-    },
-    orderBy: { alias: 'asc' },
-  });
+  const [rows, amTargets] = await Promise.all([
+    runQuery<{
+      alias: string; account_name: string | null; tier: string | null;
+      rating: string | null; account_manager: string | null; sales_rep: string | null;
+      mr_ytd: number; qtd_mr: number; mr_last_month: number; mr_yoy: number;
+      tpv_ytd: number; tpv_last_month: number;
+    }>(sql, params),
+    runQuery<{ alias: string; revenue_target: number }>(amTgtSql, {}),
+  ]);
 
-  const results: BackbookClientRow[] = [];
+  const tgtMap = new Map(amTargets.map(t => [t.alias, Number(t.revenue_target)]));
 
-  for (const account of accounts) {
-    const [ytdAgg, qtdAgg, lcmAgg, yoyAgg] = await Promise.all([
-      prisma.financialActual.aggregate({
-        where: { accountId: account.id, bookType: 'BACKBOOK', reportingMonth: { gte: startDate, lte: endDate } },
-        _sum: { totalFeeIncGrossFX: true, tpvAmount: true },
-      }),
-      prisma.financialActual.aggregate({
-        where: { accountId: account.id, bookType: 'BACKBOOK', reportingMonth: { gte: qtdStart, lte: endDate } },
-        _sum: { totalFeeIncGrossFX: true },
-      }),
-      prisma.financialActual.aggregate({
-        where: { accountId: account.id, bookType: 'BACKBOOK', reportingMonth: { gte: lcmStart, lte: lcmEnd } },
-        _sum: { totalFeeIncGrossFX: true, tpvAmount: true },
-      }),
-      prisma.financialActual.aggregate({
-        where: { accountId: account.id, bookType: 'BACKBOOK', reportingMonth: { gte: yoyStart, lte: yoyEnd } },
-        _sum: { totalFeeIncGrossFX: true },
-      }),
-    ]);
-
-    const mrYTD = Number(ytdAgg._sum.totalFeeIncGrossFX ?? 0);
-    const mrYoY = Number(yoyAgg._sum.totalFeeIncGrossFX ?? 0);
-    if (mrYTD === 0) continue; // skip inactive accounts
-
-    // Per-account AM target for pctToTarget
-    const amTarget = await prisma.aMTarget.findFirst({
-      where: { accountId: account.id },
-      orderBy: { quarter: 'desc' },
-    });
-
-    results.push({
-      alias: account.alias,
-      accountName: account.accountName,
-      tier: account.tier,
-      rating: account.rating,
-      accountManager: account.accountManager?.fullName ?? null,
-      salesRep: account.salesRep?.fullName ?? null,
-      qtdMR: Number(qtdAgg._sum.totalFeeIncGrossFX ?? 0),
+  return rows.map(r => {
+    const mrYTD   = Number(r.mr_ytd);
+    const mrYoY   = Number(r.mr_yoy);
+    const amTarget = tgtMap.get(r.alias) ?? null;
+    return {
+      alias:        r.alias,
+      accountName:  r.account_name,
+      tier:         r.tier,
+      rating:       r.rating,
+      accountManager: r.account_manager,
+      salesRep:     r.sales_rep,
+      isManaged,
+      qtdMR:        Number(r.qtd_mr),
       mrYTD,
-      mrLastMonth: Number(lcmAgg._sum.totalFeeIncGrossFX ?? 0),
-      mrYoYPct: mrYoY > 0 ? mrYTD / mrYoY - 1 : null,
-      tpvYTD: Number(ytdAgg._sum.tpvAmount ?? 0),
-      tpvLastMonth: Number(lcmAgg._sum.tpvAmount ?? 0),
-      pctToTarget: amTarget?.revenueTarget ? mrYTD / Number(amTarget.revenueTarget) - 1 : null,
-    });
-  }
-
-  // Sort by mrYTD descending
-  return results.sort((a, b) => b.mrYTD - a.mrYTD);
+      mrLastMonth:  Number(r.mr_last_month),
+      mrYoYPct:     mrYoY > 0 ? mrYTD / mrYoY - 1 : null,
+      tpvYTD:       Number(r.tpv_ytd),
+      tpvLastMonth: Number(r.tpv_last_month),
+      pctToTarget:  amTarget ? mrYTD / amTarget - 1 : null,
+    };
+  });
 }
 
 export const getManagedAccounts   = (f: DashboardFilters) => fetchBackbookAccounts(f, true);
@@ -119,7 +143,6 @@ export interface ExcessiveVampRow {
   alias: string;
   owner: string | null;
   domain: string | null;
-  acquirer: string | null;
   vampAssessment: number;
   vampRatio: number;
   createdEvents: number;
@@ -127,69 +150,72 @@ export interface ExcessiveVampRow {
 }
 
 export async function getExcessiveVamp(_filters: DashboardFilters): Promise<ExcessiveVampRow[]> {
-  // Return records flagged from the "4. Excessive VAMP" curated sheet
-  const records = await prisma.vampRecord.findMany({
-    where: {
-      OR: [
-        { isExcessiveFlag: true },
-        // Also catch records calculated as excessive: ratio > 0.015 AND fraudEvents > 1500
-        { vampRatio: { gt: 0.015 }, fraudEvents: { gt: 1500 } },
-      ],
-    },
-    orderBy: { vampAssessment: 'desc' },
-    distinct: ['alias'],
-  });
+  const sql = `
+    SELECT
+      alias,
+      sales_rep_name        AS owner,
+      website_domain        AS domain,
+      vamp_ratio,
+      created_events,
+      fraud_events,
+      (created_events + fraud_events) * 8 AS vamp_assessment
+    FROM ${tbl(BQ.vamp)}
+    WHERE is_excessive_flag = TRUE
+       OR (vamp_ratio > 0.015 AND fraud_events > 1500)
+    ORDER BY vamp_assessment DESC
+  `;
 
-  return records.map(r => ({
-    alias: r.alias,
-    owner: r.excessiveOwner ?? r.salesRepName,
-    domain: r.websiteDomain ?? r.excessiveAcquirer,
-    acquirer: r.excessiveAcquirer ?? r.globalAcquirerId,
-    // PRD: assessment = (createdEvents + fraudEvents) * 8
-    vampAssessment: r.isExcessiveFlag && r.vampAssessment
-      ? Number(r.vampAssessment)
-      : (r.createdEvents + r.fraudEvents) * 8,
-    vampRatio: Number(r.vampRatio),
-    createdEvents: r.createdEvents,
-    fraudEvents: r.fraudEvents,
+  const rows = await runQuery<{
+    alias: string; owner: string | null; domain: string | null;
+    vamp_ratio: number; created_events: number; fraud_events: number; vamp_assessment: number;
+  }>(sql, {});
+
+  return rows.map(r => ({
+    alias:          r.alias,
+    owner:          r.owner,
+    domain:         r.domain,
+    vampRatio:      Number(r.vamp_ratio),
+    createdEvents:  Number(r.created_events),
+    fraudEvents:    Number(r.fraud_events),
+    vampAssessment: Number(r.vamp_assessment),
   }));
 }
 
-// ─── VAMP trend (monthly ratio) ───────────────────────────────────────────────
+// ─── VAMP monthly trend ───────────────────────────────────────────────────────
 
-export interface VampMonthPoint {
+export interface VampTrendPoint {
   month: string;
   isoMonth: string;
   avgRatio: number;
-  totalCreated: number;
-  totalFraud: number;
-  totalCaptured: number;
+  flaggedCount: number;
 }
 
-export async function getVampTrend(filters: DashboardFilters): Promise<VampMonthPoint[]> {
-  const records = await prisma.vampRecord.groupBy({
-    by: ['reportingMonth'],
-    where: {
-      isExcessiveFlag: false, // use full VAMP flags data, not just excessive sheet
-      reportingMonth: { gte: filters.startDate, lte: filters.endDate },
-    },
-    _avg: { vampRatio: true },
-    _sum: { createdEvents: true, fraudEvents: true, capturedEvents: true },
-    orderBy: { reportingMonth: 'asc' },
+export async function getVampTrend(filters: DashboardFilters): Promise<VampTrendPoint[]> {
+  const sql = `
+    SELECT
+      FORMAT_DATE('%Y-%m', reporting_month) AS iso_month,
+      AVG(vamp_ratio)                        AS avg_ratio,
+      COUNTIF(is_excessive_flag = TRUE OR (vamp_ratio > 0.015 AND fraud_events > 1500)) AS flagged_count
+    FROM ${tbl(BQ.vamp)}
+    WHERE reporting_month BETWEEN @start AND @end
+      AND is_excessive_flag = FALSE
+    GROUP BY iso_month
+    ORDER BY iso_month
+  `;
+
+  const rows = await runQuery<{ iso_month: string; avg_ratio: number; flagged_count: number }>(sql, {
+    start: isoDate(filters.startDate),
+    end:   isoDate(filters.endDate),
   });
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return records.map(r => {
-    const d = new Date(r.reportingMonth);
-    const m = d.getUTCMonth();
-    const isoMonth = `${d.getUTCFullYear()}-${String(m + 1).padStart(2, '0')}`;
+  return rows.map(r => {
+    const m = parseInt(r.iso_month.split('-')[1]) - 1;
     return {
-      month: `${MONTH_LABELS[m]} ${String(d.getUTCFullYear()).slice(2)}`,
-      isoMonth,
-      avgRatio: Number(r._avg.vampRatio ?? 0),
-      totalCreated: r._sum.createdEvents ?? 0,
-      totalFraud: r._sum.fraudEvents ?? 0,
-      totalCaptured: r._sum.capturedEvents ?? 0,
+      month:        `${MONTH_LABELS[m]} ${r.iso_month.split('-')[0].slice(2)}`,
+      isoMonth:     r.iso_month,
+      avgRatio:     Number(r.avg_ratio),
+      flaggedCount: Number(r.flagged_count),
     };
   });
 }

@@ -9,7 +9,8 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.16.1",
+    "@google-cloud/bigquery": "^7.9.1",
+    "google-auth-library": "^9.14.1",
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

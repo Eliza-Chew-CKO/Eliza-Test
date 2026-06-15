@@ -1,33 +1,11 @@
-import { prisma } from '../lib/prisma';
-import { DashboardFilters, subMonths } from '../middleware/filters';
+import { runQuery, tbl, BQ } from '../lib/bigquery';
+import { DashboardFilters } from '../middleware/filters';
 
-// Stages excluded from weighted pipeline display (PRD spec)
-const EXCLUDED_STAGES = ['disqualified', 'terminated merchant', 'qa required', 'closed/won', 'closed/lost', 'closed lost', 'merchant lost'];
-const GOLIATH_ALIAS = 'GOLIATH capital';
-
-function isExcludedStage(stage: string): boolean {
-  return EXCLUDED_STAGES.some(s => stage.toLowerCase().includes(s));
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 // ─── Weighted Pipeline Over Time ──────────────────────────────────────────────
-
-const STAGE_COLORS: Record<string, string> = {
-  explore: 'Explore',
-  propose: 'Propose',
-  trade: 'Trade',
-  handover: 'Handover',
-  live: 'Live',
-};
-
-function normalizeStageLabel(raw: string): string {
-  const s = raw.toLowerCase();
-  if (s.startsWith('explore') || s.startsWith('e1') || s.startsWith('e2')) return 'Explore';
-  if (s.startsWith('propose') || s.startsWith('p1') || s.startsWith('p2')) return 'Propose';
-  if (s.startsWith('trade') || s.startsWith('t1') || s.startsWith('t2')) return 'Trade';
-  if (s.startsWith('handover') || s.startsWith('h1') || s.startsWith('h2')) return 'Handover';
-  if (s.startsWith('live') || s.startsWith('l1')) return 'Live';
-  return 'Other';
-}
 
 export interface WeightedPipelinePoint {
   month: string;
@@ -40,48 +18,73 @@ export interface WeightedPipelinePoint {
   total: number;
 }
 
+const EXCLUDED_STAGES = [
+  'disqualified', 'terminated merchant', 'qa required',
+  'closed/won', 'closed/lost', 'closed lost', 'merchant lost',
+];
+
+function normalizeStageLabel(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.startsWith('explore') || s.startsWith('e1') || s.startsWith('e2')) return 'Explore';
+  if (s.startsWith('propose') || s.startsWith('p1') || s.startsWith('p2')) return 'Propose';
+  if (s.startsWith('trade')   || s.startsWith('t1') || s.startsWith('t2')) return 'Trade';
+  if (s.startsWith('handover')|| s.startsWith('h1') || s.startsWith('h2')) return 'Handover';
+  if (s.startsWith('live')    || s.startsWith('l1'))                        return 'Live';
+  return 'Other';
+}
+
 export async function getWeightedPipeline(filters: DashboardFilters): Promise<WeightedPipelinePoint[]> {
-  const snapshots = await prisma.pipelineSnapshot.findMany({
-    where: {
-      snapshotDate: { gte: filters.startDate, lte: filters.endDate },
-      stageName: { notIn: EXCLUDED_STAGES.map(s => s) },
-      opportunity: {
-        accountName: { not: GOLIATH_ALIAS },
-        ...(filters.repName ? { salesRepName: { contains: filters.repName, mode: 'insensitive' } } : {}),
-      },
-    },
-    select: { snapshotDate: true, stageName: true, weightedExpectedMNR: true },
-  });
+  const repClause = filters.repName
+    ? `AND LOWER(sales_rep_name) LIKE LOWER(@repName)` : '';
 
-  // Filter excluded stages after fetch (case-insensitive)
-  const filtered = snapshots.filter(s => !isExcludedStage(s.stageName));
+  const sql = `
+    SELECT
+      FORMAT_DATE('%Y-%m', snapshot_date) AS iso_month,
+      stage_name,
+      SUM(weighted_expected_mnr) AS total_mnr
+    FROM ${tbl(BQ.pipelineSnapshots)}
+    WHERE snapshot_date BETWEEN @start AND @end
+      AND NOT LOWER(stage_name) IN UNNEST(@excluded)
+      AND NOT UPPER(account_name) LIKE '%GOLIATH CAPITAL%'
+      ${repClause}
+    GROUP BY iso_month, stage_name
+    ORDER BY iso_month
+  `;
 
-  // Group by month + stage
-  const monthStageMap = new Map<string, Record<string, number>>();
-  for (const row of filtered) {
-    const d = new Date(row.snapshotDate);
-    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-    const stage = normalizeStageLabel(row.stageName);
-    if (!monthStageMap.has(key)) monthStageMap.set(key, { Explore: 0, Propose: 0, Trade: 0, Handover: 0, Live: 0, Other: 0 });
-    const bucket = monthStageMap.get(key)!;
-    bucket[stage] = (bucket[stage] ?? 0) + Number(row.weightedExpectedMNR);
+  const params: Record<string, unknown> = {
+    start:    isoDate(filters.startDate),
+    end:      isoDate(filters.endDate),
+    excluded: EXCLUDED_STAGES,
+  };
+  if (filters.repName) params.repName = `%${filters.repName}%`;
+
+  const rows = await runQuery<{ iso_month: string; stage_name: string; total_mnr: number }>(sql, params);
+
+  const monthMap = new Map<string, Record<string, number>>();
+  for (const row of rows) {
+    if (!monthMap.has(row.iso_month)) {
+      monthMap.set(row.iso_month, { Explore: 0, Propose: 0, Trade: 0, Handover: 0, Live: 0 });
+    }
+    const bucket = monthMap.get(row.iso_month)!;
+    const stage  = normalizeStageLabel(row.stage_name);
+    if (stage !== 'Other') bucket[stage] = (bucket[stage] ?? 0) + Number(row.total_mnr);
   }
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return Array.from(monthStageMap.entries())
+  return Array.from(monthMap.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([isoMonth, stages]) => {
       const m = parseInt(isoMonth.split('-')[1]) - 1;
-      const year = isoMonth.split('-')[0];
+      const y = isoMonth.split('-')[0];
       return {
-        month: `${MONTH_LABELS[m]} ${year.slice(2)}`,
+        month:    `${MONTH_LABELS[m]} ${y.slice(2)}`,
         isoMonth,
-        Explore: stages.Explore,
-        Propose: stages.Propose,
-        Trade: stages.Trade,
+        Explore:  stages.Explore,
+        Propose:  stages.Propose,
+        Trade:    stages.Trade,
         Handover: stages.Handover,
-        Live: stages.Live,
-        total: stages.Explore + stages.Propose + stages.Trade + stages.Handover + stages.Live,
+        Live:     stages.Live,
+        total:    stages.Explore + stages.Propose + stages.Trade + stages.Handover + stages.Live,
       };
     });
 }
@@ -96,68 +99,63 @@ export interface BottleneckMetric {
 }
 
 export async function getPipelineBottlenecks(filters: DashboardFilters): Promise<BottleneckMetric[]> {
-  const now = new Date();
-  const last90Start  = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const prior90Start = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
-  const prior90End   = new Date(last90Start.getTime() - 1);
+  const now         = new Date();
+  const l90Start    = isoDate(new Date(now.getTime() - 90  * 86400_000));
+  const prior90Start= isoDate(new Date(now.getTime() - 180 * 86400_000));
+  const prior90End  = isoDate(new Date(now.getTime() - 91  * 86400_000));
+  const nowStr      = isoDate(now);
 
-  const noramFilter = filters.repName
-    ? { salesRepName: { contains: filters.repName, mode: 'insensitive' as const } }
-    : {};
+  const repClause = filters.repName ? `AND LOWER(sales_rep_name) LIKE LOWER(@repName)` : '';
+  const UW_APPROVED = ['COMPLETED','APPROVED BY CKO','WAITING FOR CREDENTIALS','CREDENTIALS RELEASED'];
 
-  // Explore meetings: firstExploreMeetingDate in window
-  const [exploreL90, explorePrior90] = await Promise.all([
-    prisma.opportunity.count({ where: { firstExploreMeetingDate: { gte: last90Start, lte: now }, ...noramFilter } }),
-    prisma.opportunity.count({ where: { firstExploreMeetingDate: { gte: prior90Start, lte: prior90End }, ...noramFilter } }),
-  ]);
+  const sql = `
+    SELECT
+      -- Explore meetings
+      COUNTIF(first_explore_meeting_date BETWEEN @l90s AND @now ${repClause.replace(/AND/g,'AND')}) AS explore_l90,
+      COUNTIF(first_explore_meeting_date BETWEEN @p90s AND @p90e ${repClause.replace(/AND/g,'AND')}) AS explore_p90,
+      -- Moved to Propose
+      COUNTIF(date_set_to_propose BETWEEN @l90s AND @now ${repClause.replace(/AND/g,'AND')}) AS propose_l90,
+      COUNTIF(date_set_to_propose BETWEEN @p90s AND @p90e ${repClause.replace(/AND/g,'AND')}) AS propose_p90,
+      -- Moved to Trade
+      COUNTIF(date_set_to_trade BETWEEN @l90s AND @now ${repClause.replace(/AND/g,'AND')}) AS trade_l90,
+      COUNTIF(date_set_to_trade BETWEEN @p90s AND @p90e ${repClause.replace(/AND/g,'AND')}) AS trade_p90,
+      -- Moved to Handover
+      COUNTIF(date_set_to_handover BETWEEN @l90s AND @now ${repClause.replace(/AND/g,'AND')}) AS handover_l90,
+      COUNTIF(date_set_to_handover BETWEEN @p90s AND @p90e ${repClause.replace(/AND/g,'AND')}) AS handover_p90,
+      -- MAF Submitted
+      COUNTIF(date_maf_submitted BETWEEN @l90s AND @now ${repClause.replace(/AND/g,'AND')}) AS maf_l90,
+      COUNTIF(date_maf_submitted BETWEEN @p90s AND @p90e ${repClause.replace(/AND/g,'AND')}) AS maf_p90,
+      -- Underwriting approved
+      COUNTIF(date_underwriting_done BETWEEN @l90s AND @now
+        AND UPPER(underwriting_new_value) IN UNNEST(@uw_approved)
+        ${repClause.replace(/AND/g,'AND')}) AS uw_l90,
+      COUNTIF(date_underwriting_done BETWEEN @p90s AND @p90e
+        AND UPPER(underwriting_new_value) IN UNNEST(@uw_approved)
+        ${repClause.replace(/AND/g,'AND')}) AS uw_p90
+    FROM ${tbl(BQ.opportunities)}
+    WHERE is_noram = TRUE
+  `;
 
-  // Moved to Propose: dateSetToPropose in window
-  const [proposeL90, proposePrior90] = await Promise.all([
-    prisma.opportunity.count({ where: { dateSetToPropose: { gte: last90Start, lte: now }, ...noramFilter } }),
-    prisma.opportunity.count({ where: { dateSetToPropose: { gte: prior90Start, lte: prior90End }, ...noramFilter } }),
-  ]);
+  const params: Record<string, unknown> = {
+    l90s:        l90Start,
+    now:         nowStr,
+    p90s:        prior90Start,
+    p90e:        prior90End,
+    uw_approved: UW_APPROVED,
+  };
+  if (filters.repName) params.repName = `%${filters.repName}%`;
 
-  // Moved to Trade: dateSetToTrade in window
-  const [tradeL90, tradePrior90] = await Promise.all([
-    prisma.opportunity.count({ where: { dateSetToTrade: { gte: last90Start, lte: now }, ...noramFilter } }),
-    prisma.opportunity.count({ where: { dateSetToTrade: { gte: prior90Start, lte: prior90End }, ...noramFilter } }),
-  ]);
-
-  // Moved to Handover: dateSetToHandover in window
-  const [handoverL90, handoverPrior90] = await Promise.all([
-    prisma.opportunity.count({ where: { dateSetToHandover: { gte: last90Start, lte: now }, ...noramFilter } }),
-    prisma.opportunity.count({ where: { dateSetToHandover: { gte: prior90Start, lte: prior90End }, ...noramFilter } }),
-  ]);
-
-  // MAF Submitted
-  const [mafL90, mafPrior90] = await Promise.all([
-    prisma.opportunity.count({ where: { dateMAFSubmitted: { gte: last90Start, lte: now }, ...noramFilter } }),
-    prisma.opportunity.count({ where: { dateMAFSubmitted: { gte: prior90Start, lte: prior90End }, ...noramFilter } }),
-  ]);
-
-  // Underwriting approved: dateUnderwritingDone in window AND new value matches approved statuses
-  const UW_APPROVED = ['COMPLETED', 'APPROVED BY CKO', 'WAITING FOR CREDENTIALS', 'CREDENTIALS RELEASED'];
-  const [uwL90, uwPrior90] = await Promise.all([
-    prisma.opportunity.count({ where: { dateUnderwritingDone: { gte: last90Start, lte: now }, underwritingNewValue: { in: UW_APPROVED }, ...noramFilter } }),
-    prisma.opportunity.count({ where: { dateUnderwritingDone: { gte: prior90Start, lte: prior90End }, underwritingNewValue: { in: UW_APPROVED }, ...noramFilter } }),
-  ]);
-
-  // Technical Stage 4
-  const [techL90, techPrior90] = await Promise.all([
-    prisma.opportunity.count({ where: { dateTechnicalStage4: { gte: last90Start, lte: now }, isNoram: true, ...noramFilter } }),
-    prisma.opportunity.count({ where: { dateTechnicalStage4: { gte: prior90Start, lte: prior90End }, isNoram: true, ...noramFilter } }),
-  ]);
+  const [row] = await runQuery<Record<string, number>>(sql, params);
 
   const pct = (l: number, p: number) => p > 0 ? l / p - 1 : null;
 
   return [
-    { label: 'Explore Meetings',      last90: exploreL90,  prior90: explorePrior90,  changePct: pct(exploreL90,  explorePrior90) },
-    { label: 'Moved to Propose',      last90: proposeL90,  prior90: proposePrior90,  changePct: pct(proposeL90,  proposePrior90) },
-    { label: 'Moved to Trade',        last90: tradeL90,    prior90: tradePrior90,    changePct: pct(tradeL90,    tradePrior90) },
-    { label: 'Moved to Handover',     last90: handoverL90, prior90: handoverPrior90, changePct: pct(handoverL90, handoverPrior90) },
-    { label: 'MAF Submitted',         last90: mafL90,      prior90: mafPrior90,      changePct: pct(mafL90,      mafPrior90) },
-    { label: 'Underwriting Approved', last90: uwL90,       prior90: uwPrior90,       changePct: pct(uwL90,       uwPrior90) },
-    { label: 'Technical Stage 4',     last90: techL90,     prior90: techPrior90,     changePct: pct(techL90,     techPrior90) },
+    { label: 'Explore Meetings',      last90: row.explore_l90,  prior90: row.explore_p90,  changePct: pct(row.explore_l90,  row.explore_p90) },
+    { label: 'Moved to Propose',      last90: row.propose_l90,  prior90: row.propose_p90,  changePct: pct(row.propose_l90,  row.propose_p90) },
+    { label: 'Moved to Trade',        last90: row.trade_l90,    prior90: row.trade_p90,    changePct: pct(row.trade_l90,    row.trade_p90) },
+    { label: 'Moved to Handover',     last90: row.handover_l90, prior90: row.handover_p90, changePct: pct(row.handover_l90, row.handover_p90) },
+    { label: 'MAF Submitted',         last90: row.maf_l90,      prior90: row.maf_p90,      changePct: pct(row.maf_l90,      row.maf_p90) },
+    { label: 'Underwriting Approved', last90: row.uw_l90,       prior90: row.uw_p90,       changePct: pct(row.uw_l90,       row.uw_p90) },
   ];
 }
 
@@ -168,32 +166,44 @@ export interface GoLiveTracker {
   goldCount: number;
   target: number | null;
   goldTarget: number | null;
-  pacedTarget: number | null;
   pctToTarget: number | null;
-  pctToPacedTarget: number | null;
 }
 
 export async function getGoLiveTracker(filters: DashboardFilters): Promise<GoLiveTracker> {
-  const [count, goldCount] = await Promise.all([
-    prisma.goLive.count({ where: { reportingMonth: { gte: filters.startDate, lte: filters.endDate } } }),
-    prisma.goLive.count({ where: { reportingMonth: { gte: filters.startDate, lte: filters.endDate }, rating: { equals: 'Gold', mode: 'insensitive' } } }),
+  const sql = `
+    SELECT
+      COUNT(*) AS total,
+      COUNTIF(LOWER(rating) = 'gold') AS gold
+    FROM ${tbl(BQ.financials)}
+    WHERE normalized_stage = 'CLOSED_WON'
+      AND close_date BETWEEN @start AND @end
+      AND go_live_region = 'NORAM'
+  `;
+
+  const tgtSql = `
+    SELECT type, CAST(amount AS FLOAT64) AS amount
+    FROM ${tbl(BQ.targets)}
+    WHERE type IN ('GO_LIVE_TOTAL', 'GO_LIVE_GOLD') AND period <= @end
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY type ORDER BY period DESC) = 1
+  `;
+
+  const params = { start: isoDate(filters.startDate), end: isoDate(filters.endDate) };
+  const [counts, targets] = await Promise.all([
+    runQuery<{ total: number; gold: number }>(sql, params),
+    runQuery<{ type: string; amount: number }>(tgtSql, { end: isoDate(filters.endDate) }),
   ]);
 
-  const [totalTgt, goldTgt] = await Promise.all([
-    prisma.target.findFirst({ where: { type: 'GO_LIVE_TOTAL', period: { lte: filters.endDate } }, orderBy: { period: 'desc' } }),
-    prisma.target.findFirst({ where: { type: 'GO_LIVE_GOLD', period: { lte: filters.endDate } }, orderBy: { period: 'desc' } }),
-  ]);
-
-  const tgt = totalTgt ? Number(totalTgt.amount) : null;
-  const gTgt = goldTgt ? Number(goldTgt.amount) : null;
+  const count     = Number(counts[0]?.total ?? 0);
+  const goldCount = Number(counts[0]?.gold ?? 0);
+  const tgt       = targets.find(t => t.type === 'GO_LIVE_TOTAL');
+  const goldTgt   = targets.find(t => t.type === 'GO_LIVE_GOLD');
+  const tgtVal    = tgt ? Number(tgt.amount) : null;
 
   return {
     count,
     goldCount,
-    target: tgt,
-    goldTarget: gTgt,
-    pacedTarget: null, // paced target requires interpolation logic — can add later
-    pctToTarget: tgt ? count / tgt - 1 : null,
-    pctToPacedTarget: null,
+    target:      tgtVal,
+    goldTarget:  goldTgt ? Number(goldTgt.amount) : null,
+    pctToTarget: tgtVal ? count / tgtVal - 1 : null,
   };
 }
