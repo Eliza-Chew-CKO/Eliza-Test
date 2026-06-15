@@ -6,80 +6,94 @@ import type {
   Account,
   User,
   FinancialTrendPoint,
+  LeaderboardEntry,
   ApiResponse,
 } from '@/types';
 
-// ─── Axios instance ────────────────────────────────────────────────────────────
+// ─── Axios instance ───────────────────────────────────────────────────────────
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000',
+  timeout: 15_000,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15_000,
 });
 
-// ─── Query param builder ──────────────────────────────────────────────────────
+// ─── Filter → query param helpers ────────────────────────────────────────────
 
 function filtersToParams(filters: DashboardFilters): Record<string, string> {
   const params: Record<string, string> = {
     dateRange: filters.dateRange,
   };
   if (filters.startDate) params.startDate = filters.startDate;
-  if (filters.endDate)   params.endDate   = filters.endDate;
-  if (filters.repId)     params.repId     = filters.repId;
-  if (filters.tier)      params.tier      = filters.tier;
+  if (filters.endDate) params.endDate = filters.endDate;
+  if (filters.repId) params.repId = filters.repId;
+  if (filters.tier) params.tier = filters.tier;
   return params;
 }
 
-// ─── API functions ─────────────────────────────────────────────────────────────
+// ─── API functions ────────────────────────────────────────────────────────────
 
 /**
- * Fetch the executive KPI summary (net revenue, frontbook MNR, backbook, TPV, etc.)
+ * Fetch the top-level KPI summary used by the Executive Summary section.
+ * Endpoint: GET /api/kpi/summary
  */
-export async function fetchKPISummary(filters: DashboardFilters): Promise<KPISummary> {
-  const { data } = await apiClient.get<ApiResponse<KPISummary>>('/api/kpi/summary', {
-    params: filtersToParams(filters),
-  });
+export async function fetchKPISummary(
+  filters: DashboardFilters
+): Promise<KPISummary> {
+  const { data } = await apiClient.get<ApiResponse<KPISummary>>(
+    '/api/kpi/summary',
+    { params: filtersToParams(filters) }
+  );
   return data.data;
 }
 
 /**
- * Fetch open pipeline opportunities, optionally filtered by stage / rep / tier.
+ * Fetch the list of open opportunities for the pipeline section.
+ * Endpoint: GET /api/pipeline
  */
-export async function fetchPipeline(filters: DashboardFilters): Promise<Opportunity[]> {
-  const { data } = await apiClient.get<ApiResponse<Opportunity[]>>('/api/pipeline', {
-    params: filtersToParams(filters),
-  });
+export async function fetchPipeline(
+  filters: DashboardFilters
+): Promise<Opportunity[]> {
+  const { data } = await apiClient.get<ApiResponse<Opportunity[]>>(
+    '/api/pipeline',
+    { params: filtersToParams(filters) }
+  );
   return data.data;
 }
 
 /**
- * Fetch backbook accounts with their latest financial actuals.
+ * Fetch the list of accounts with their latest financial actuals.
+ * Endpoint: GET /api/backbook
  */
-export async function fetchBackbook(filters: DashboardFilters): Promise<Account[]> {
-  const { data } = await apiClient.get<ApiResponse<Account[]>>('/api/backbook', {
-    params: filtersToParams(filters),
-  });
+export async function fetchBackbook(
+  filters: DashboardFilters
+): Promise<Account[]> {
+  const { data } = await apiClient.get<ApiResponse<Account[]>>(
+    '/api/backbook',
+    { params: filtersToParams(filters) }
+  );
   return data.data;
 }
 
 /**
- * Fetch rep leaderboard — ranked by revenue, includes deals closed and variance vs target.
+ * Fetch ranked leaderboard entries for sales reps.
+ * Endpoint: GET /api/leaderboard
  */
 export async function fetchLeaderboard(
   filters: DashboardFilters
-): Promise<{ rep: User; revenue: number; deals: number }[]> {
-  const { data } = await apiClient.get<
-    ApiResponse<{ rep: User; revenue: number; deals: number }[]>
-  >('/api/leaderboard', {
-    params: filtersToParams(filters),
-  });
+): Promise<LeaderboardEntry[]> {
+  const { data } = await apiClient.get<ApiResponse<LeaderboardEntry[]>>(
+    '/api/leaderboard',
+    { params: filtersToParams(filters) }
+  );
   return data.data;
 }
 
 /**
- * Fetch monthly financial trends — revenue actuals vs targets, plus TPV.
+ * Fetch monthly revenue actuals vs targets for trend charts.
+ * Endpoint: GET /api/kpi/trends
  */
 export async function fetchFinancialTrends(
   filters: DashboardFilters
@@ -90,3 +104,5 @@ export async function fetchFinancialTrends(
   );
   return data.data;
 }
+
+export default apiClient;

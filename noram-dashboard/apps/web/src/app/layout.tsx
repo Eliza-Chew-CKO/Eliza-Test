@@ -6,14 +6,14 @@ import Header from '@/components/layout/Header';
 
 const inter = Inter({
   subsets: ['latin'],
-  display: 'swap',
   variable: '--font-inter',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
   title: 'NORAM Sales Dashboard',
   description:
-    'Real-time visibility into NORAM sales performance — pipeline, backbook revenue, financial actuals vs targets, and rep leaderboards.',
+    'Real-time visibility into North American sales performance, pipeline health, backbook accounts, and rep leaderboards.',
 };
 
 export default function RootLayout({
@@ -23,19 +23,20 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="flex h-screen overflow-hidden bg-neutral-50 font-sans antialiased">
-        {/* Fixed-width sidebar */}
-        <Sidebar />
+      <body className="bg-neutral-50 font-sans antialiased">
+        <div className="flex h-screen overflow-hidden">
+          {/* Fixed-width sidebar */}
+          <Sidebar />
 
-        {/* Main content area */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Top header bar */}
-          <Header />
+          {/* Main content column */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <Header />
 
-          {/* Scrollable page content */}
-          <main className="flex-1 overflow-y-auto p-6">
-            {children}
-          </main>
+            {/* Scrollable page content */}
+            <main className="flex-1 overflow-y-auto p-6">
+              {children}
+            </main>
+          </div>
         </div>
       </body>
     </html>

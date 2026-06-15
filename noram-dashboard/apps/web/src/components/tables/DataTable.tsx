@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -10,23 +9,24 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
-interface DataTableProps<T> {
-  data: T[];
-  columns: ColumnDef<T>[];
+interface DataTableProps<TData> {
+  data: TData[];
+  columns: ColumnDef<TData>[];
   isLoading?: boolean;
   pageSize?: number;
 }
 
 const SKELETON_ROWS = 5;
 
-export default function DataTable<T>({
+export default function DataTable<TData>({
   data,
   columns,
   isLoading = false,
   pageSize = 10,
-}: DataTableProps<T>) {
+}: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
   const table = useReactTable({
@@ -40,8 +40,14 @@ export default function DataTable<T>({
     initialState: { pagination: { pageSize } },
   });
 
+  const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
+  const totalRows = table.getFilteredRowModel().rows.length;
+  const from = pageIndex * currentPageSize + 1;
+  const to = Math.min((pageIndex + 1) * currentPageSize, totalRows);
+
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      {/* Table */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-neutral-200">
           <thead className="bg-neutral-50">
@@ -50,32 +56,39 @@ export default function DataTable<T>({
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    onClick={header.column.getToggleSortingHandler()}
+                    scope="col"
                     className={cn(
                       'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500',
                       header.column.getCanSort() && 'cursor-pointer select-none hover:text-neutral-900'
                     )}
+                    onClick={header.column.getToggleSortingHandler()}
                   >
-                    <div className="flex items-center gap-1">
+                    <span className="flex items-center gap-1">
                       {flexRender(header.column.columnDef.header, header.getContext())}
                       {header.column.getCanSort() && (
-                        <span className="text-neutral-400">
-                          {{ asc: ' ▲', desc: ' ▼' }[header.column.getIsSorted() as string] ?? ' ⇅'}
+                        <span className="text-neutral-300">
+                          {header.column.getIsSorted() === 'asc'
+                            ? '↑'
+                            : header.column.getIsSorted() === 'desc'
+                            ? '↓'
+                            : '↕'}
                         </span>
                       )}
-                    </div>
+                    </span>
                   </th>
                 ))}
               </tr>
             ))}
           </thead>
+
           <tbody className="divide-y divide-neutral-100 bg-white">
             {isLoading
-              ? Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-                  <tr key={`skeleton-${i}`} className="animate-pulse">
-                    {columns.map((_, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 w-full rounded bg-neutral-200" />
+              ? // Skeleton rows
+                Array.from({ length: SKELETON_ROWS }).map((_, rowIdx) => (
+                  <tr key={rowIdx}>
+                    {columns.map((_, colIdx) => (
+                      <td key={colIdx} className="px-4 py-3">
+                        <div className="skeleton h-4 w-full" />
                       </td>
                     ))}
                   </tr>
@@ -83,7 +96,7 @@ export default function DataTable<T>({
               : table.getRowModel().rows.map((row) => (
                   <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3 text-sm text-neutral-700">
+                      <td key={cell.id} className="whitespace-nowrap px-4 py-3 text-sm text-neutral-800">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}
@@ -94,26 +107,30 @@ export default function DataTable<T>({
       </div>
 
       {/* Pagination */}
-      {!isLoading && table.getPageCount() > 1 && (
-        <div className="flex items-center justify-between border-t border-neutral-200 bg-neutral-50 px-4 py-3">
-          <p className="text-sm text-neutral-500">
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()} —{' '}
-            {data.length} rows
+      {!isLoading && totalRows > 0 && (
+        <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3">
+          <p className="text-xs text-neutral-500">
+            Showing {from}–{to} of {totalRows} rows
           </p>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
             >
-              Previous
+              ← Prev
             </button>
+            <span className="px-2 text-xs text-neutral-500">
+              Page {pageIndex + 1} / {table.getPageCount()}
+            </span>
             <button
+              type="button"
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
             >
-              Next
+              Next →
             </button>
           </div>
         </div>

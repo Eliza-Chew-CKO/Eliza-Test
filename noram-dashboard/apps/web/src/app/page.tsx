@@ -20,22 +20,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Global filter bar — date range, rep, tier */}
+      {/* Global filter bar — sits above all sections */}
       <GlobalFilters filters={filters} onChange={setFilters} />
 
-      {/* Section 1: High-level KPI cards */}
+      {/* Section 1: Top-level KPI cards */}
       <ExecutiveSummary filters={filters} />
 
-      {/* Section 2: Revenue actuals vs targets, TPV trends */}
+      {/* Section 2: Revenue actuals vs targets over time */}
       <FinancialTrends filters={filters} />
 
-      {/* Section 3: Frontbook pipeline funnel + open opportunities table */}
+      {/* Section 3: Frontbook pipeline funnel + opportunity table */}
       <FrontbookPipeline filters={filters} />
 
-      {/* Section 4: Backbook account metrics */}
+      {/* Section 4: Backbook managed/unmanaged account data */}
       <BackbookAccount filters={filters} />
 
-      {/* Section 5: Rep leaderboards */}
+      {/* Section 5: Rep leaderboards by revenue and deals */}
       <Leaderboards filters={filters} />
     </div>
   );

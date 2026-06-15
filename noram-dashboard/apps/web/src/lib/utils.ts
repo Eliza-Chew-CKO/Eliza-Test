@@ -2,63 +2,62 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { format, parseISO } from 'date-fns';
 
-// ─── Tailwind class helper ─────────────────────────────────────────────────────
+// ─── Class name helper ────────────────────────────────────────────────────────
 
 /**
- * Merges Tailwind CSS classes with clsx + tailwind-merge to avoid conflicts.
- *
- * @example cn('px-4 py-2', isActive && 'bg-primary-500', 'text-white')
+ * Merges Tailwind class names, resolving conflicts via tailwind-merge.
+ * Usage: cn('px-4 py-2', condition && 'bg-blue-500', 'px-6') → 'py-2 bg-blue-500 px-6'
  */
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-// ─── Number formatting ──────────────────────────────────────────────────────────
+// ─── Number formatting ────────────────────────────────────────────────────────
 
 /**
- * Format a number as a currency string.
- *
- * @example formatCurrency(1234567.89) // "$1,234,567.89"
- * @example formatCurrency(500000, 'GBP') // "£500,000.00"
+ * Format a number as a USD currency string.
+ * @example formatCurrency(1234567.89) → "$1,234,568"
+ * @example formatCurrency(1234567.89, 'GBP') → "£1,234,568"
  */
-export function formatCurrency(value: number, currency = 'USD'): string {
+export function formatCurrency(
+  value: number,
+  currency = 'USD',
+  maximumFractionDigits = 0
+): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    maximumFractionDigits,
   }).format(value);
 }
 
 /**
- * Format a number as a percentage string.
- *
- * @example formatPct(0.1234) // "12.3%"
- * @example formatPct(0.1234, 2) // "12.34%"
+ * Format a decimal ratio as a percentage string.
+ * @example formatPct(0.1234) → "12.3%"
+ * @example formatPct(0.1234, 2) → "12.34%"
  */
 export function formatPct(value: number, decimals = 1): string {
   return `${(value * 100).toFixed(decimals)}%`;
 }
 
 /**
- * Format a large number with K / M / B abbreviations.
- *
- * @example formatCompact(1_500_000) // "$1.5M"
+ * Format a large number with K/M/B suffixes for compact display.
+ * @example formatCompact(1_250_000) → "$1.3M"
  */
 export function formatCompact(value: number): string {
   return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(value);
 }
 
-// ─── Variance calculations ───────────────────────────────────────────────────────
+// ─── Variance calculation ─────────────────────────────────────────────────────
 
 /**
  * Calculate absolute and percentage variance between actual and target.
- * Positive values = above target (favorable). Negative = below.
- *
- * @example calcVariance(110_000, 100_000) // { absolute: 10000, pct: 0.1 }
+ * A positive variance means actual exceeded target.
  */
 export function calcVariance(
   actual: number,
@@ -69,17 +68,13 @@ export function calcVariance(
   return { absolute, pct };
 }
 
-// ─── Run rate ───────────────────────────────────────────────────────────────────
+// ─── Run rate ─────────────────────────────────────────────────────────────────
 
 /**
  * Project a month-to-date value to a full-month run rate.
- *
- * @param mtdValue   Value accumulated so far this month
- * @param dayOfMonth Current day of the month (1-based)
- * @param daysInMonth Total days in the month
- * @returns Projected end-of-month value
- *
- * @example getRunRate(50_000, 10, 31) // ~155_000
+ * @param mtdValue  Value accumulated so far this month
+ * @param dayOfMonth  Current day of the month (1-based)
+ * @param daysInMonth  Total days in the month
  */
 export function getRunRate(
   mtdValue: number,
@@ -90,13 +85,12 @@ export function getRunRate(
   return (mtdValue / dayOfMonth) * daysInMonth;
 }
 
-// ─── Date formatting ────────────────────────────────────────────────────────────
+// ─── Date formatting ──────────────────────────────────────────────────────────
 
 /**
- * Format a date as "MMM yyyy" — e.g. "Jan 2025".
- *
- * @example formatMonth(new Date('2025-01-15')) // "Jan 2025"
- * @example formatMonth('2025-06-01') // "Jun 2025"
+ * Format a date as a short month + year label for chart axes.
+ * @example formatMonth(new Date('2025-01-01')) → "Jan 2025"
+ * @example formatMonth('2025-01-01') → "Jan 2025"
  */
 export function formatMonth(date: Date | string): string {
   const d = typeof date === 'string' ? parseISO(date) : date;
@@ -104,9 +98,10 @@ export function formatMonth(date: Date | string): string {
 }
 
 /**
- * Format a date as a short locale string — e.g. "Jun 15, 2025".
+ * Format a date as a short display string.
+ * @example formatDate('2025-06-15') → "15 Jun 2025"
  */
 export function formatDate(date: Date | string): string {
   const d = typeof date === 'string' ? parseISO(date) : date;
-  return format(d, 'MMM d, yyyy');
+  return format(d, 'd MMM yyyy');
 }

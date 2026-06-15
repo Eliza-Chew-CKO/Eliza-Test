@@ -4,8 +4,8 @@ import {
   ResponsiveContainer,
   FunnelChart as RechartsFunnelChart,
   Funnel,
-  LabelList,
   Tooltip,
+  LabelList,
 } from 'recharts';
 import { formatCurrency } from '@/lib/utils';
 
@@ -20,32 +20,30 @@ interface FunnelChartProps {
   height?: number;
 }
 
-// Colours assigned per pipeline stage
-const STAGE_COLORS: Record<string, string> = {
-  Discovery: '#93c5fd',
-  Scoping: '#60a5fa',
-  Proposal: '#3b82f6',
-  Negotiation: '#1d4ed8',
-  'Closed Won': '#10b981',
-};
+// Colour ramp from top (discovery) to bottom (closed won)
+const STAGE_COLORS = [
+  '#0070f3', // primary blue
+  '#4d90ff',
+  '#22c55e',
+  '#f59e0b',
+  '#8b5cf6',
+];
 
-function CustomTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: any[];
-}) {
+interface TooltipPayloadItem {
+  payload: FunnelStage & { fill: string };
+}
+
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayloadItem[] }) {
   if (!active || !payload?.length) return null;
-  const item = payload[0].payload as FunnelStage;
+  const item = payload[0].payload;
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white px-4 py-3 shadow-lg text-sm">
+    <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-card text-sm">
       <p className="font-semibold text-neutral-900">{item.stage}</p>
-      <p className="text-neutral-600">
+      <p className="text-neutral-500">
         Deals: <span className="font-medium text-neutral-900">{item.count}</span>
       </p>
-      <p className="text-neutral-600">
-        Value:{' '}
+      <p className="text-neutral-500">
+        Total value:{' '}
         <span className="font-medium text-neutral-900">
           {formatCurrency(item.value)}
         </span>
@@ -54,26 +52,28 @@ function CustomTooltip({
   );
 }
 
-export default function FunnelChart({ data, height = 320 }: FunnelChartProps) {
-  // Recharts Funnel expects a `fill` field on each data item
-  const coloredData = data.map((d) => ({
-    ...d,
-    name: d.stage,
-    fill: STAGE_COLORS[d.stage] ?? '#6b7280',
-    // Recharts Funnel uses `value` as the width metric
-    value: d.count,
-    rawValue: d.value,
+export default function FunnelChart({ data, height = 350 }: FunnelChartProps) {
+  // Recharts Funnel expects a flat array with a `fill` and `value` (for sizing)
+  const chartData = data.map((stage, i) => ({
+    ...stage,
+    name: stage.stage,
+    fill: STAGE_COLORS[i % STAGE_COLORS.length],
   }));
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <RechartsFunnelChart>
         <Tooltip content={<CustomTooltip />} />
-        <Funnel dataKey="value" data={coloredData} isAnimationActive>
+        <Funnel
+          dataKey="count"
+          data={chartData}
+          isAnimationActive
+          labelLine={false}
+        >
           <LabelList
             dataKey="stage"
             position="center"
-            style={{ fill: '#fff', fontSize: 13, fontWeight: 600 }}
+            style={{ fontSize: '12px', fill: '#fff', fontWeight: 600 }}
           />
         </Funnel>
       </RechartsFunnelChart>

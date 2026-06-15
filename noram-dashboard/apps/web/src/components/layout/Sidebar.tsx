@@ -10,65 +10,71 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
-// Simple inline SVG icons to avoid adding an icon library dependency
-const icons = {
-  overview: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+// Simple SVG icon components (inline to avoid icon-library dependencies)
+function IconGrid() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
     </svg>
-  ),
-  trends: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+  );
+}
+function IconTrendUp() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
     </svg>
-  ),
-  pipeline: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+  );
+}
+function IconFunnel() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
     </svg>
-  ),
-  backbook: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+  );
+}
+function IconBook() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
     </svg>
-  ),
-  leaderboards: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+  );
+}
+function IconTrophy() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
     </svg>
-  ),
-};
+  );
+}
 
-const NAV_ITEMS: NavItem[] = [
-  { label: 'Overview',          href: '/',             icon: icons.overview },
-  { label: 'Financial Trends',  href: '/trends',       icon: icons.trends },
-  { label: 'Pipeline',          href: '/pipeline',     icon: icons.pipeline },
-  { label: 'Backbook',          href: '/backbook',     icon: icons.backbook },
-  { label: 'Leaderboards',      href: '/leaderboards', icon: icons.leaderboards },
+const navItems: NavItem[] = [
+  { label: 'Overview', href: '/', icon: <IconGrid /> },
+  { label: 'Financial Trends', href: '/trends', icon: <IconTrendUp /> },
+  { label: 'Pipeline', href: '/pipeline', icon: <IconFunnel /> },
+  { label: 'Backbook', href: '/backbook', icon: <IconBook /> },
+  { label: 'Leaderboards', href: '/leaderboards', icon: <IconTrophy /> },
 ];
 
-export default function Sidebar() {
+export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-neutral-900">
-      {/* Branding */}
-      <div className="flex items-center gap-3 border-b border-neutral-800 px-6 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-500">
-          <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-          </svg>
+    <aside className="flex h-full w-60 shrink-0 flex-col bg-neutral-900 text-white">
+      {/* Brand / logo */}
+      <div className="flex h-16 items-center gap-2.5 border-b border-neutral-700 px-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-500 font-bold text-sm text-white">
+          N
         </div>
-        <div>
-          <p className="text-sm font-semibold text-white leading-tight">NORAM Dashboard</p>
-          <p className="text-xs text-neutral-400">Sales Intelligence</p>
+        <div className="leading-tight">
+          <p className="text-sm font-semibold text-white">NORAM</p>
+          <p className="text-xs text-neutral-400">Sales Dashboard</p>
         </div>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const isActive =
               item.href === '/'
                 ? pathname === '/'
@@ -81,13 +87,19 @@ export default function Sidebar() {
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                     isActive
-                      ? 'bg-primary-500 text-white'
-                      : 'text-neutral-400 hover:bg-neutral-800 hover:text-white'
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-neutral-300 hover:bg-neutral-800 hover:text-white',
                   )}
                 >
-                  {item.icon}
+                  <span
+                    className={cn(
+                      'shrink-0',
+                      isActive ? 'text-white' : 'text-neutral-400',
+                    )}
+                  >
+                    {item.icon}
+                  </span>
                   {item.label}
-                  {/* Active indicator dot */}
                   {isActive && (
                     <span className="ml-auto h-1.5 w-1.5 rounded-full bg-white" />
                   )}
@@ -99,7 +111,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-neutral-800 px-6 py-4">
+      <div className="border-t border-neutral-700 px-5 py-4">
         <p className="text-xs text-neutral-500">
           &copy; {new Date().getFullYear()} Checkout.com
         </p>

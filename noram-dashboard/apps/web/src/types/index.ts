@@ -1,10 +1,9 @@
-// ─── Core domain types ───────────────────────────────────────────────────────
+// ─── Core entity types ────────────────────────────────────────────────────────
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  /** e.g. "AE", "AM", "Sales Manager" */
   role: string;
   salesRegion: string;
   createdAt: string; // ISO date string
@@ -13,35 +12,43 @@ export interface User {
 export interface Account {
   id: string;
   alias: string;
-  /** "Enterprise" | "Mid-Market" | "SMB" */
-  tier: string;
+  tier: 'Enterprise' | 'Mid-Market' | 'SMB';
   isManaged: boolean;
   salesRepId: string;
   accountManagerId: string | null;
-  goLiveDate: string | null; // ISO date string
+  goLiveDate: string | null;
   region: string;
   referralPartner: string | null;
   sector: string | null;
   createdAt: string;
 }
 
+export type OpportunityStage =
+  | 'Discovery'
+  | 'Scoping'
+  | 'Proposal'
+  | 'Negotiation'
+  | 'Closed Won'
+  | 'Closed Lost';
+
+export type OpportunityType = 'New Logo' | 'Expansion' | 'Renewal';
+
 export interface StageHistoryEntry {
-  stage: string;
-  enteredAt: string; // ISO date string
+  stage: OpportunityStage;
+  enteredAt: string;
+  exitedAt: string | null;
 }
 
 export interface Opportunity {
   id: string;
   accountId: string;
   salesRepId: string;
-  /** Pipeline stage: Discovery | Scoping | Proposal | Negotiation | Closed Won | Closed Lost */
-  stage: string;
-  /** "New Logo" | "Expansion" | "Renewal" */
-  type: string;
+  stage: OpportunityStage;
+  type: OpportunityType;
   baseMonthlyRevenue: number;
   rollMonthlyRevenue: number;
   weightedExpectedMNR: number;
-  closeDate: string; // ISO date string
+  closeDate: string;
   goLiveDate: string | null;
   rating: string | null;
   secondOwnerId: string | null;
@@ -53,8 +60,7 @@ export interface Opportunity {
 export interface FinancialActual {
   id: string;
   accountId: string;
-  /** First day of the reporting month, ISO date string */
-  reportingMonth: string;
+  reportingMonth: string; // ISO date — first day of the month
   totalFees: number;
   grossFX: number;
   ccpExclusion: number;
@@ -74,8 +80,7 @@ export type TargetType =
 
 export interface Target {
   id: string;
-  /** "YYYY-MM" e.g. "2025-06" */
-  period: string;
+  period: string; // "YYYY-MM"
   type: TargetType;
   amount: number;
   goLiveCount: number | null;
@@ -109,8 +114,28 @@ export interface KPISummary {
   backbookRevenue: number;
   tpvAmount: number;
   goLiveCount: number;
-  vampRatio: number;
+  vampRatio: number | null;
 }
+
+// ─── Dashboard filter state ───────────────────────────────────────────────────
+
+export interface DashboardFilters {
+  dateRange: 'MTD' | 'YTD' | 'CUSTOM';
+  startDate?: string; // ISO date — used when dateRange === 'CUSTOM'
+  endDate?: string;
+  repId?: string | null;
+  tier?: string | null;
+}
+
+// ─── Generic API wrapper ──────────────────────────────────────────────────────
+
+export interface ApiResponse<T> {
+  data: T;
+  success: boolean;
+  error?: string;
+}
+
+// ─── Leaderboard entry ────────────────────────────────────────────────────────
 
 export interface LeaderboardEntry {
   rank: number;
@@ -120,6 +145,8 @@ export interface LeaderboardEntry {
   deals: number;
 }
 
+// ─── Financial trend data point ───────────────────────────────────────────────
+
 export interface FinancialTrendPoint {
   month: string; // "Jan 2025"
   actual: number;
@@ -127,24 +154,10 @@ export interface FinancialTrendPoint {
   tpv: number;
 }
 
+// ─── Pipeline funnel stage ────────────────────────────────────────────────────
+
 export interface PipelineFunnelStage {
-  stage: string;
+  stage: OpportunityStage;
   count: number;
-  value: number;
-}
-
-// ─── Filter / API types ───────────────────────────────────────────────────────
-
-export interface DashboardFilters {
-  dateRange: 'MTD' | 'YTD' | 'CUSTOM';
-  startDate?: string;   // ISO date, used when dateRange === 'CUSTOM'
-  endDate?: string;     // ISO date, used when dateRange === 'CUSTOM'
-  repId?: string | null;
-  tier?: string | null;
-}
-
-export interface ApiResponse<T> {
-  data: T;
-  success: boolean;
-  error?: string;
+  value: number; // total weighted MNR
 }

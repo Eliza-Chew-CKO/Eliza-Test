@@ -1,101 +1,114 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import KPICard from '@/components/kpi/KPICard';
-import { fetchKPISummary } from '@/lib/api';
-import { getRunRateFromDate } from '@/lib/utils';
+import { useEffect, useState } from 'react';
 import type { DashboardFilters, KPISummary } from '@/types';
+import { fetchKPISummary } from '@/lib/api';
+import { getRunRate, formatPct } from '@/lib/utils';
+import KPICard from '@/components/kpi/KPICard';
 
 interface ExecutiveSummaryProps {
   filters: DashboardFilters;
 }
 
 export default function ExecutiveSummary({ filters }: ExecutiveSummaryProps) {
-  const [data, setData] = useState<KPISummary | null>(null);
+  const [kpis, setKpis] = useState<KPISummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
+    setError(null);
 
-    async function load() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const summary = await fetchKPISummary(filters);
-        if (!cancelled) setData(summary);
-      } catch (err) {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : 'Failed to load KPI summary');
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
+    fetchKPISummary(filters)
+      .then((data) => {
+        if (!cancelled) {
+          setKpis(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setError(err.message ?? 'Failed to load KPI data');
+          setIsLoading(false);
+        }
+      });
 
-    load();
     return () => { cancelled = true; };
   }, [filters]);
 
-  const runRate = data
-    ? getRunRateFromDate(data.netRevenue)
-    : undefined;
+  const today = new Date();
+  const dayOfMonth = today.getDate();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const runRateRevenue = kpis
+    ? getRunRate(kpis.netRevenue, dayOfMonth, daysInMonth)
+    : 0;
 
   return (
-    <section className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-neutral-900">Executive Summary</h2>
-        <p className="text-sm text-neutral-500">
-          High-level KPIs for the selected period. Data refreshed daily.
+    <section>
+      <div className="mb-4">
+        <h2 className="section-title">Executive Summary</h2>
+        <p className="section-description">
+          Key performance indicators for the selected period.
+          {filters.dateRange === 'MTD' && (
+            <span className="ml-1 text-neutral-400">
+              Run rate based on day {dayOfMonth} of {daysInMonth}.
+            </span>
+          )}
         </p>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+        <div className="mb-4 rounded-lg bg-danger-50 px-4 py-3 text-sm text-danger-600">
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <KPICard
           title="Net Revenue"
-          value={data?.netRevenue ?? 0}
-          target={data?.netRevenueTarget}
+          value={kpis?.netRevenue ?? 0}
+          target={kpis?.netRevenueTarget}
           formatAs="currency"
-          subtitle={runRate ? `Run rate: ${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',notation:'compact'}).format(runRate)}` : undefined}
+          subtitle={
+            filters.dateRange === 'MTD'
+              ? `Run rate: $${(runRateRevenue / 1_000).toFixed(0)}K`
+              : undefined
+          }
           isLoading={isLoading}
         />
         <KPICard
           title="Frontbook MNR"
-          value={data?.frontbookMNR ?? 0}
-          target={data?.frontbookTarget}
+          value={kpis?.frontbookMNR ?? 0}
+          target={kpis?.frontbookTarget}
           formatAs="currency"
           isLoading={isLoading}
         />
         <KPICard
           title="Backbook Revenue"
-          value={data?.backbookRevenue ?? 0}
+          value={kpis?.backbookRevenue ?? 0}
           formatAs="currency"
           isLoading={isLoading}
         />
         <KPICard
           title="TPV"
-          value={data?.tpvAmount ?? 0}
+          value={kpis?.tpvAmount ?? 0}
           formatAs="currency"
-          subtitle="Total processed volume"
+          subtitle="Total payment volume"
           isLoading={isLoading}
         />
         <KPICard
-          title="Go-Live Count"
-          value={data?.goLiveCount ?? 0}
+          title="Go-Lives"
+          value={kpis?.goLiveCount ?? 0}
           formatAs="number"
           subtitle="Accounts live this period"
           isLoading={isLoading}
         />
         <KPICard
-          title="Avg VAMP Ratio"
-          value={data?.vampRatioAvg ?? 0}
+          title="VAMP Ratio"
+          value={kpis?.vampRatio ?? 0}
           formatAs="percent"
-          subtitle="Lower is better"
+          subtitle="Fraud events / captured events"
           isLoading={isLoading}
         />
       </div>

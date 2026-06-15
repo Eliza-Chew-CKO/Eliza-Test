@@ -1,204 +1,183 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { type ColumnDef } from '@tanstack/react-table';
+import { useEffect, useState } from 'react';
 import FunnelChart from '@/components/charts/FunnelChart';
 import DataTable from '@/components/tables/DataTable';
 import { fetchPipeline } from '@/lib/api';
 import { formatCurrency, formatMonth } from '@/lib/utils';
 import type { DashboardFilters, Opportunity } from '@/types';
+import type { ColumnDef } from '@tanstack/react-table';
 
 interface FrontbookPipelineProps {
   filters: DashboardFilters;
 }
 
-const PIPELINE_STAGES = ['Discovery', 'Scoping', 'Proposal', 'Negotiation', 'Closed Won'];
-
-function buildFunnelData(opps: Opportunity[]) {
-  return PIPELINE_STAGES.map((stage) => {
-    const stageOpps = opps.filter((o) => o.stage === stage);
+// Aggregate opportunities into funnel data by stage
+function buildFunnelData(opportunities: Opportunity[]) {
+  const STAGES = ['Discovery', 'Scoping', 'Proposal', 'Negotiation', 'Closed Won'];
+  return STAGES.map((stage) => {
+    const stageOpps = opportunities.filter((o) => o.stage === stage);
     return {
       stage,
       count: stageOpps.length,
       value: stageOpps.reduce((sum, o) => sum + o.weightedExpectedMNR, 0),
     };
-  });
+  }).filter((d) => d.count > 0);
 }
 
+const COLUMNS: ColumnDef<Opportunity>[] = [
+  {
+    header: 'Account',
+    accessorKey: 'accountId',
+    cell: ({ getValue }) => (
+      <span className="font-medium text-gray-900">{getValue() as string}</span>
+    ),
+  },
+  {
+    header: 'Stage',
+    accessorKey: 'stage',
+    cell: ({ getValue }) => {
+      const stage = getValue() as string;
+      const colors: Record<string, string> = {
+        Discovery: 'bg-purple-100 text-purple-700',
+        Scoping: 'bg-blue-100 text-blue-700',
+        Proposal: 'bg-cyan-100 text-cyan-700',
+        Negotiation: 'bg-amber-100 text-amber-700',
+        'Closed Won': 'bg-green-100 text-green-700',
+      };
+      return (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[stage] ?? 'bg-gray-100 text-gray-600'}`}>
+          {stage}
+        </span>
+      );
+    },
+  },
+  {
+    header: 'Type',
+    accessorKey: 'type',
+  },
+  {
+    header: 'Base MNR',
+    accessorKey: 'baseMonthlyRevenue',
+    cell: ({ getValue }) => formatCurrency(getValue() as number),
+  },
+  {
+    header: 'Roll MNR',
+    accessorKey: 'rollMonthlyRevenue',
+    cell: ({ getValue }) => formatCurrency(getValue() as number),
+  },
+  {
+    header: 'Weighted MNR',
+    accessorKey: 'weightedExpectedMNR',
+    cell: ({ getValue }) => (
+      <span className="font-medium">{formatCurrency(getValue() as number)}</span>
+    ),
+  },
+  {
+    header: 'Close Date',
+    accessorKey: 'closeDate',
+    cell: ({ getValue }) => formatMonth(getValue() as string),
+  },
+  {
+    header: 'Rating',
+    accessorKey: 'rating',
+    cell: ({ getValue }) => getValue() as string ?? '—',
+  },
+  {
+    header: 'Rep',
+    accessorKey: 'salesRepId',
+  },
+];
+
 export default function FrontbookPipeline({ filters }: FrontbookPipelineProps) {
-  const [opps, setOpps] = useState<Opportunity[]>([]);
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
+    setError(null);
 
-    async function load() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await fetchPipeline(filters);
-        if (!cancelled) setOpps(data);
-      } catch (err) {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : 'Failed to load pipeline');
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
+    fetchPipeline(filters)
+      .then((data) => {
+        if (!cancelled) {
+          setOpportunities(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err?.message ?? 'Failed to load pipeline data.');
+          setIsLoading(false);
+        }
+      });
 
-    load();
     return () => { cancelled = true; };
   }, [filters]);
 
-  const funnelData = useMemo(() => buildFunnelData(opps), [opps]);
-
-  const columns = useMemo<ColumnDef<Opportunity, unknown>[]>(
-    () => [
-      {
-        id: 'accountId',
-        header: 'Account',
-        accessorKey: 'accountId',
-        cell: ({ getValue }) => (
-          <span className="font-medium text-neutral-900">{getValue() as string}</span>
-        ),
-      },
-      {
-        id: 'stage',
-        header: 'Stage',
-        accessorKey: 'stage',
-        cell: ({ getValue }) => {
-          const stage = getValue() as string;
-          const colorMap: Record<string, string> = {
-            'Discovery':   'bg-blue-50 text-blue-700',
-            'Scoping':     'bg-indigo-50 text-indigo-700',
-            'Proposal':    'bg-purple-50 text-purple-700',
-            'Negotiation': 'bg-warning-50 text-warning-700',
-            'Closed Won':  'bg-success-50 text-success-700',
-            'Closed Lost': 'bg-danger-50 text-danger-700',
-          };
-          return (
-            <span className={`badge ${colorMap[stage] ?? 'bg-neutral-100 text-neutral-600'}`}>
-              {stage}
-            </span>
-          );
-        },
-      },
-      {
-        id: 'type',
-        header: 'Type',
-        accessorKey: 'type',
-        cell: ({ getValue }) => <span className="text-xs text-neutral-600">{getValue() as string}</span>,
-      },
-      {
-        id: 'baseMonthlyRevenue',
-        header: 'Base MNR',
-        accessorKey: 'baseMonthlyRevenue',
-        cell: ({ getValue }) => (
-          <span className="tabular-nums">{formatCurrency(getValue() as number)}</span>
-        ),
-      },
-      {
-        id: 'rollMonthlyRevenue',
-        header: 'Roll MNR',
-        accessorKey: 'rollMonthlyRevenue',
-        cell: ({ getValue }) => (
-          <span className="tabular-nums">{formatCurrency(getValue() as number)}</span>
-        ),
-      },
-      {
-        id: 'weightedExpectedMNR',
-        header: 'Weighted MNR',
-        accessorKey: 'weightedExpectedMNR',
-        cell: ({ getValue }) => (
-          <span className="font-medium tabular-nums text-primary-700">
-            {formatCurrency(getValue() as number)}
-          </span>
-        ),
-      },
-      {
-        id: 'closeDate',
-        header: 'Close Date',
-        accessorKey: 'closeDate',
-        cell: ({ getValue }) => (
-          <span className="text-xs text-neutral-500">{formatMonth(getValue() as string)}</span>
-        ),
-      },
-      {
-        id: 'rating',
-        header: 'Rating',
-        accessorKey: 'rating',
-        cell: ({ getValue }) => <span className="text-xs">{(getValue() as string) ?? '—'}</span>,
-      },
-      {
-        id: 'salesRepId',
-        header: 'Rep',
-        accessorKey: 'salesRepId',
-        cell: ({ getValue }) => <span className="text-xs text-neutral-500">{getValue() as string}</span>,
-      },
-    ],
-    [],
-  );
+  const funnelData = buildFunnelData(opportunities);
 
   return (
-    <section className="space-y-6">
+    <section id="frontbook-pipeline" className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-neutral-900">Frontbook Pipeline</h2>
-        <p className="text-sm text-neutral-500">
-          Open opportunities by stage, deal value, and rep ownership.
+        <h2 className="text-lg font-semibold text-gray-900">Frontbook Pipeline</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Open opportunities by stage with weighted MNR values.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Pipeline funnel */}
-        <div className="card lg:col-span-1">
-          <h3 className="mb-4 text-sm font-semibold text-neutral-700">Pipeline Funnel</h3>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Pipeline Funnel */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4">Pipeline by Stage</h3>
           {isLoading ? (
-            <div className="skeleton h-72 w-full rounded-lg" />
+            <div className="h-72 bg-gray-100 animate-pulse rounded-lg" />
           ) : (
-            <FunnelChart data={funnelData} height={288} />
+            <FunnelChart data={funnelData} height={320} />
           )}
         </div>
 
-        {/* Stage summary */}
-        <div className="card lg:col-span-2 flex flex-col gap-2">
-          <h3 className="mb-2 text-sm font-semibold text-neutral-700">Stage Breakdown</h3>
-          {isLoading ? (
-            <div className="space-y-2">
-              {PIPELINE_STAGES.map((s) => (
-                <div key={s} className="skeleton h-6 w-full rounded" />
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {funnelData.map((stage) => (
-                <div key={stage.stage} className="flex items-center justify-between text-sm">
-                  <span className="text-neutral-700 font-medium">{stage.stage}</span>
-                  <div className="flex gap-6">
-                    <span className="tabular-nums text-neutral-500">
-                      {stage.count} deal{stage.count !== 1 ? 's' : ''}
-                    </span>
-                    <span className="tabular-nums font-medium text-neutral-800">
-                      {formatCurrency(stage.value)}
-                    </span>
+        {/* Stage Summary Cards */}
+        <div className="space-y-3">
+          {isLoading
+            ? Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-14 bg-gray-100 animate-pulse rounded-lg" />
+              ))
+            : funnelData.map((stage) => (
+                <div
+                  key={stage.stage}
+                  className="flex items-center justify-between bg-white rounded-lg border border-gray-200 shadow-sm px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{stage.stage}</p>
+                    <p className="text-xs text-gray-400">{stage.count} deal{stage.count !== 1 ? 's' : ''}</p>
                   </div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {formatCurrency(stage.value)}
+                  </p>
                 </div>
               ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Opportunities table */}
-      <div>
-        <h3 className="mb-3 text-sm font-semibold text-neutral-700">Open Opportunities</h3>
-        <DataTable data={opps} columns={columns} isLoading={isLoading} pageSize={10} />
+      {/* Opportunities Table */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-800">Open Opportunities</h3>
+        </div>
+        <DataTable<Opportunity>
+          data={opportunities}
+          columns={COLUMNS}
+          isLoading={isLoading}
+          pageSize={10}
+        />
       </div>
     </section>
   );
