@@ -18,15 +18,9 @@ export function ExecutiveSummary({ filters }: ExecutiveSummaryProps) {
     setIsLoading(true);
     setError(null);
     fetchKPISummary(filters)
-      .then((summary) => {
-        setData(summary);
-      })
-      .catch((err: Error) => {
-        setError(err.message);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      .then(setData)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setIsLoading(false));
   }, [filters]);
 
   return (
@@ -46,50 +40,37 @@ export function ExecutiveSummary({ filters }: ExecutiveSummaryProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KPICard
-          title="Net Revenue"
-          value={data?.netRevenue ?? 0}
-          target={data?.netRevenueTarget}
+          title="Total Net Revenue"
+          value={data?.totalMR.value ?? 0}
+          target={data?.totalMR.target ?? undefined}
           formatAs="currency"
-          subtitle="Total net revenue in period"
+          subtitle={data?.totalMR.yoyPct != null ? `${data.totalMR.yoyPct >= 0 ? '+' : ''}${(data.totalMR.yoyPct * 100).toFixed(1)}% YoY` : 'vs last year'}
           isLoading={isLoading}
         />
         <KPICard
-          title="Frontbook MNR"
-          value={data?.frontbookMNR ?? 0}
-          target={data?.frontbookTarget}
+          title="Frontbook NR"
+          value={data?.frontbookNR.value ?? 0}
+          target={data?.frontbookNR.target ?? undefined}
           formatAs="currency"
-          subtitle="Monthly net revenue from new logos"
+          subtitle={data?.frontbookNR.runRate != null ? `Run rate: $${(data.frontbookNR.runRate / 1_000_000).toFixed(1)}M` : 'Monthly net revenue'}
           isLoading={isLoading}
         />
         <KPICard
-          title="Backbook Revenue"
-          value={data?.backbookRevenue ?? 0}
+          title="Backbook NR"
+          value={data?.backbookNR.value ?? 0}
+          target={data?.backbookNR.target ?? undefined}
           formatAs="currency"
-          subtitle="Revenue from existing accounts"
+          subtitle={data?.backbookNR.runRate != null ? `Run rate: $${(data.backbookNR.runRate / 1_000_000).toFixed(1)}M` : 'Existing account revenue'}
           isLoading={isLoading}
         />
         <KPICard
-          title="TPV"
-          value={data?.tpvAmount ?? 0}
+          title="US BIN TPV"
+          value={data?.usBinTPV.value ?? 0}
+          target={data?.usBinTPV.target ?? undefined}
           formatAs="currency"
-          subtitle="Total payment volume processed"
-          isLoading={isLoading}
-        />
-        <KPICard
-          title="Go-Lives"
-          value={data?.goLiveCount ?? 0}
-          formatAs="number"
-          subtitle="Accounts gone live this period"
-          isLoading={isLoading}
-        />
-        <KPICard
-          title="VAMP Ratio"
-          value={data?.vampRatio != null ? data.vampRatio * 100 : 0}
-          formatAs="percent"
-          suffix="%"
-          subtitle="Avg fraud ratio across accounts"
+          subtitle={data?.usBinTPV.yoyPct != null ? `${data.usBinTPV.yoyPct >= 0 ? '+' : ''}${(data.usBinTPV.yoyPct * 100).toFixed(1)}% YoY` : 'Total payment volume'}
           isLoading={isLoading}
         />
       </div>

@@ -6,7 +6,7 @@ export interface User {
   email: string;
   role: string;
   salesRegion: string;
-  createdAt: string; // ISO date string
+  createdAt: string;
 }
 
 export interface Account {
@@ -33,12 +33,6 @@ export type OpportunityStage =
 
 export type OpportunityType = 'New Logo' | 'Expansion' | 'Renewal';
 
-export interface StageHistoryEntry {
-  stage: OpportunityStage;
-  enteredAt: string;
-  exitedAt: string | null;
-}
-
 export interface Opportunity {
   id: string;
   accountId: string;
@@ -52,76 +46,128 @@ export interface Opportunity {
   goLiveDate: string | null;
   rating: string | null;
   secondOwnerId: string | null;
-  stageHistory: StageHistoryEntry[];
   createdAt: string;
   updatedAt: string;
 }
 
-export interface FinancialActual {
-  id: string;
-  accountId: string;
-  reportingMonth: string; // ISO date — first day of the month
-  totalFees: number;
-  grossFX: number;
-  ccpExclusion: number;
-  netRevenue: number;
-  tpvAmount: number;
-  binType: string | null;
-  acquirerId: string | null;
-  createdAt: string;
+// ─── KPI summary (matches revenueService.ts KPISummary) ──────────────────────
+
+export interface KPIMetric {
+  value: number;
+  target: number | null;
+  variancePct: number | null;
+  varianceAbs: number | null;
+  runRate: number | null;
+  runRateMoMPct: number | null;
+  yoyPct: number | null;
 }
-
-export type TargetType =
-  | 'FRONTBOOK_BASE'
-  | 'FRONTBOOK_ROLL'
-  | 'BACKBOOK_MANAGED'
-  | 'BACKBOOK_UNMANAGED'
-  | 'TPV';
-
-export interface Target {
-  id: string;
-  period: string; // "YYYY-MM"
-  type: TargetType;
-  amount: number;
-  goLiveCount: number | null;
-  createdAt: string;
-}
-
-export interface VampRecord {
-  id: string;
-  accountId: string;
-  reportingMonth: string;
-  createdEvents: number;
-  fraudEvents: number;
-  totalCapturedEvents: number;
-  vampRatio: number;
-  vampType: string;
-  vampAssessment: string | null;
-  acquirerCountry: string | null;
-  acquirerId: string | null;
-  createdAt: string;
-}
-
-// ─── Aggregated / computed types ─────────────────────────────────────────────
 
 export interface KPISummary {
-  netRevenue: number;
-  netRevenueTarget: number;
-  netRevenueVariance: number;
-  netRevenueVariancePct: number;
-  frontbookMNR: number;
-  frontbookTarget: number;
-  backbookRevenue: number;
-  tpvAmount: number;
-  goLiveCount: number;
-  vampRatio: number | null;
+  frontbookNR: KPIMetric;
+  backbookNR: KPIMetric;
+  totalMR: KPIMetric;
+  usBinTPV: KPIMetric;
+}
+
+// ─── Financial trend (matches revenueService.ts MonthlyPoint) ────────────────
+
+export interface MonthlyPoint {
+  month: string;       // 'Jan 26'
+  isoMonth: string;    // '2026-01'
+  actual: number;
+  cumulActual: number;
+  baseTarget: number | null;
+  rollTarget: number | null;
+  cumulBase: number | null;
+  cumulRoll: number | null;
+}
+
+export interface CombinedTrendPoint {
+  month: string;
+  isoMonth: string;
+  fbActual: number;
+  bbActual: number;
+  cumulFB: number;
+  cumulBB: number;
+  fbTarget: number | null;
+  bbTarget: number | null;
+  tpv: number;
+}
+
+// ─── TPV trend point ──────────────────────────────────────────────────────────
+
+export interface TPVPoint {
+  month: string;
+  isoMonth: string;
+  volume: number;
+}
+
+// ─── Pipeline (matches pipelineService.ts) ───────────────────────────────────
+
+export interface WeightedPipelinePoint {
+  month: string;
+  isoMonth: string;
+  Explore: number;
+  Propose: number;
+  Trade: number;
+  Handover: number;
+  Live: number;
+  total: number;
+}
+
+export interface BottleneckMetric {
+  label: string;
+  last90: number;
+  prior90: number;
+  changePct: number | null;
+}
+
+export interface GoLiveTracker {
+  count: number;
+  goldCount: number;
+  target: number | null;
+  goldTarget: number | null;
+  pacedTarget: number | null;
+  pctToTarget: number | null;
+  pctToPacedTarget: number | null;
+}
+
+// ─── Backbook (matches backbookService.ts BackbookClientRow) ─────────────────
+
+export interface BackbookClientRow {
+  alias: string;
+  accountName: string | null;
+  tier: string | null;
+  rating: string | null;
+  accountManager: string | null;
+  salesRep: string | null;
+  isManaged: boolean;
+  qtdMR: number;
+  mrYTD: number;
+  mrLastMonth: number;
+  mrYoYPct: number | null;
+  tpvYTD: number;
+  tpvLastMonth: number;
+  pctToTarget: number | null;
+}
+
+// ─── Leaderboard (matches leaderboardService.ts RepLeaderboardRow) ────────────
+
+export interface LeaderboardEntry {
+  rank: number;
+  repName: string;
+  mrYTD: number;
+  mrLastMonth: number;
+  mrYTDPct: number;
+  tpvYTD: number;
+  dealCount: number;
 }
 
 // ─── Dashboard filter state ───────────────────────────────────────────────────
 
 export interface DashboardFilters {
   dateRange: 'MTD' | 'YTD' | 'CUSTOM';
-  startDate?: string; // ISO date — used when dateRange === 'CUSTOM'
+  startDate?: string;
   endDate?: string;
   repId?: string | null;
   tier?: string | null;
@@ -135,29 +181,10 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// ─── Leaderboard entry ────────────────────────────────────────────────────────
-
-export interface LeaderboardEntry {
-  rank: number;
-  rep: User;
-  revenue: number;
-  target: number;
-  deals: number;
-}
-
-// ─── Financial trend data point ───────────────────────────────────────────────
-
-export interface FinancialTrendPoint {
-  month: string; // "Jan 2025"
-  actual: number;
-  target: number;
-  tpv: number;
-}
-
 // ─── Pipeline funnel stage ────────────────────────────────────────────────────
 
 export interface PipelineFunnelStage {
-  stage: OpportunityStage;
+  stage: string;
   count: number;
-  value: number; // total weighted MNR
+  value: number;
 }

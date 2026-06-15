@@ -1,7 +1,7 @@
 'use client';
 
 import type { ColumnDef } from '@tanstack/react-table';
-import type { User, LeaderboardEntry } from '@/types';
+import type { LeaderboardEntry } from '@/types';
 import { DataTable } from './DataTable';
 import { formatCurrency, formatPct, calcVariance, cn } from '@/lib/utils';
 
@@ -40,18 +40,15 @@ const columns: ColumnDef<LeaderboardEntry, any>[] = [
   {
     id: 'rep',
     header: 'Sales Rep',
-    accessorFn: (row) => row.rep.name,
-    cell: ({ row }) => (
-      <div>
-        <p className="font-medium text-neutral-900">{row.original.rep.name}</p>
-        <p className="text-xs text-neutral-400">{row.original.rep.salesRegion}</p>
-      </div>
+    accessorKey: 'repName',
+    cell: ({ getValue }) => (
+      <p className="font-medium text-neutral-900">{getValue<string>()}</p>
     ),
   },
   {
-    id: 'revenue',
-    header: 'Revenue (Actual)',
-    accessorKey: 'revenue',
+    id: 'mrYTD',
+    header: 'YTD Revenue',
+    accessorKey: 'mrYTD',
     cell: ({ getValue }) => (
       <span className="font-semibold text-neutral-800">
         {formatCurrency(getValue<number>(), 'USD', true)}
@@ -59,9 +56,9 @@ const columns: ColumnDef<LeaderboardEntry, any>[] = [
     ),
   },
   {
-    id: 'target',
-    header: 'Target',
-    accessorKey: 'target',
+    id: 'mrLastMonth',
+    header: 'Last Month NR',
+    accessorKey: 'mrLastMonth',
     cell: ({ getValue }) => (
       <span className="text-neutral-500">
         {formatCurrency(getValue<number>(), 'USD', true)}
@@ -69,34 +66,28 @@ const columns: ColumnDef<LeaderboardEntry, any>[] = [
     ),
   },
   {
-    id: 'variance',
-    header: 'vs Target',
-    accessorFn: (row) => row.revenue - row.target,
-    cell: ({ row }) => {
-      const { absolute, pct } = calcVariance(row.original.revenue, row.original.target);
-      const isPositive = absolute >= 0;
+    id: 'mrYTDPct',
+    header: 'vs #1',
+    accessorKey: 'mrYTDPct',
+    cell: ({ getValue }) => {
+      const pct = getValue<number>();
       return (
-        <span
-          className={cn(
-            'inline-flex flex-col text-xs font-semibold',
-            isPositive ? 'text-success-600' : 'text-danger-600',
-          )}
-        >
-          <span>
-            {isPositive ? '+' : ''}
-            {formatCurrency(absolute, 'USD', true)}
-          </span>
-          <span className="font-normal opacity-80">
-            ({isPositive ? '+' : ''}{formatPct(Math.abs(pct))})
-          </span>
-        </span>
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-24 rounded-full bg-neutral-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary-400"
+              style={{ width: `${Math.round(pct * 100)}%` }}
+            />
+          </div>
+          <span className="text-xs text-neutral-500">{Math.round(pct * 100)}%</span>
+        </div>
       );
     },
   },
   {
-    id: 'deals',
+    id: 'dealCount',
     header: 'Deals Closed',
-    accessorKey: 'deals',
+    accessorKey: 'dealCount',
     cell: ({ getValue }) => (
       <span className="font-medium text-neutral-700">{getValue<number>()}</span>
     ),

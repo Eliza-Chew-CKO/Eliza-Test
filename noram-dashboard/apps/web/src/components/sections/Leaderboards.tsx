@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { DashboardFilters, LeaderboardEntry, User } from '@/types';
+import type { DashboardFilters, LeaderboardEntry } from '@/types';
 import { fetchLeaderboard } from '@/lib/api';
 import { LeaderboardTable } from '@/components/tables/LeaderboardTable';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,7 @@ interface LeaderboardsProps {
 type LeaderboardTab = 'revenue' | 'deals';
 
 export function Leaderboards({ filters }: LeaderboardsProps) {
-  const [rawData, setRawData] = useState<{ rep: User; revenue: number; deals: number }[]>([]);
+  const [rawData, setRawData] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<LeaderboardTab>('revenue');
@@ -27,23 +27,12 @@ export function Leaderboards({ filters }: LeaderboardsProps) {
       .finally(() => setIsLoading(false));
   }, [filters]);
 
-  // Sort by revenue descending and assign ranks
-  const byRevenue: LeaderboardEntry[] = [...rawData]
-    .sort((a, b) => b.revenue - a.revenue)
-    .map((item, i) => ({
-      rank: i + 1,
-      ...item,
-      target: item.revenue * 0.9, // placeholder target until API returns per-rep targets
-    }));
+  // API already returns sorted by mrYTD desc; re-rank for deals tab
+  const byRevenue: LeaderboardEntry[] = rawData.map((r, i) => ({ ...r, rank: i + 1 }));
 
-  // Sort by deals closed descending and assign ranks
   const byDeals: LeaderboardEntry[] = [...rawData]
-    .sort((a, b) => b.deals - a.deals)
-    .map((item, i) => ({
-      rank: i + 1,
-      ...item,
-      target: item.revenue * 0.9,
-    }));
+    .sort((a, b) => b.dealCount - a.dealCount)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
 
   const displayData = activeTab === 'revenue' ? byRevenue : byDeals;
 

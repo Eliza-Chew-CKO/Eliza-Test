@@ -2,20 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { DashboardFilters, Account } from '@/types';
-import { fetchBackbook } from '@/lib/api';
+import type { DashboardFilters, BackbookClientRow } from '@/types';
+import { fetchManagedAccounts, fetchUnmanagedAccounts } from '@/lib/api';
 import { DataTable } from '@/components/tables/DataTable';
 import { KPICard } from '@/components/kpi/KPICard';
-import { formatCurrency, formatShortDate, formatPct, cn } from '@/lib/utils';
+import { formatCurrency, formatPct, cn } from '@/lib/utils';
 
 interface BackbookAccountProps {
   filters: DashboardFilters;
 }
 
-interface AccountRow extends Account {
-  netRevenueMTD?: number;
-  tpvAmount?: number;
-  vampRatio?: number;
+interface AccountRow extends BackbookClientRow {
+  isManaged: boolean;
 }
 
 const columns: ColumnDef<AccountRow, any>[] = [
@@ -32,17 +30,17 @@ const columns: ColumnDef<AccountRow, any>[] = [
     header: 'Tier',
     accessorKey: 'tier',
     cell: ({ getValue }) => {
-      const tier = getValue<string>();
+      const tier = getValue<string | null>();
       const styles: Record<string, string> = {
-        Enterprise:  'bg-primary-50 text-primary-700',
-        'Mid-Market': 'bg-purple-50 text-purple-700',
-        SMB:         'bg-neutral-100 text-neutral-600',
+        TIER_1: 'bg-primary-50 text-primary-700',
+        TIER_2: 'bg-purple-50 text-purple-700',
+        TIER_3: 'bg-neutral-100 text-neutral-600',
       };
-      return (
+      return tier ? (
         <span className={cn('badge', styles[tier] ?? 'bg-neutral-100 text-neutral-600')}>
-          {tier}
+          {tier.replace('_', ' ')}
         </span>
-      );
+      ) : <span className="text-neutral-300">—</span>;
     },
   },
   {
@@ -51,76 +49,65 @@ const columns: ColumnDef<AccountRow, any>[] = [
     accessorKey: 'isManaged',
     cell: ({ getValue }) =>
       getValue<boolean>() ? (
-        <span className="badge-success">Managed</span>
+        <span className="badge bg-success-100 text-success-700">Managed</span>
       ) : (
         <span className="badge bg-neutral-100 text-neutral-500">Unmanaged</span>
       ),
   },
   {
-    id: 'region',
-    header: 'Region',
-    accessorKey: 'region',
+    id: 'mrYTD',
+    header: 'YTD Revenue',
+    accessorKey: 'mrYTD',
     cell: ({ getValue }) => (
-      <span className="text-neutral-500 text-xs">{getValue<string>()}</span>
+      <span className="font-semibold text-neutral-800">
+        {formatCurrency(getValue<number>(), 'USD', true)}
+      </span>
     ),
   },
   {
-    id: 'netRevenueMTD',
-    header: 'Net Rev MTD',
-    accessorKey: 'netRevenueMTD',
-    cell: ({ getValue }) => {
-      const v = getValue<number | undefined>();
-      return v != null ? (
-        <span className="font-semibold text-neutral-800">{formatCurrency(v, 'USD', true)}</span>
-      ) : (
-        <span className="text-neutral-300">—</span>
-      );
-    },
+    id: 'mrLastMonth',
+    header: 'Last Month NR',
+    accessorKey: 'mrLastMonth',
+    cell: ({ getValue }) => formatCurrency(getValue<number>(), 'USD', true),
   },
   {
-    id: 'tpvAmount',
-    header: 'TPV',
-    accessorKey: 'tpvAmount',
-    cell: ({ getValue }) => {
-      const v = getValue<number | undefined>();
-      return v != null ? formatCurrency(v, 'USD', true) : <span className="text-neutral-300">—</span>;
-    },
+    id: 'tpvYTD',
+    header: 'YTD TPV',
+    accessorKey: 'tpvYTD',
+    cell: ({ getValue }) => formatCurrency(getValue<number>(), 'USD', true),
   },
   {
-    id: 'vampRatio',
-    header: 'VAMP Ratio',
-    accessorKey: 'vampRatio',
+    id: 'mrYoYPct',
+    header: 'YoY',
+    accessorKey: 'mrYoYPct',
     cell: ({ getValue }) => {
-      const v = getValue<number | undefined>();
+      const v = getValue<number | null>();
       if (v == null) return <span className="text-neutral-300">—</span>;
-      const isHigh = v > 0.009; // >0.9% is considered elevated
+      const positive = v >= 0;
       return (
-        <span className={cn('font-medium text-xs', isHigh ? 'text-danger-600' : 'text-neutral-600')}>
-          {formatPct(v, 3)}
+        <span className={cn('font-medium text-xs', positive ? 'text-success-600' : 'text-danger-600')}>
+          {positive ? '+' : ''}{(v * 100).toFixed(1)}%
         </span>
       );
     },
   },
   {
-    id: 'goLiveDate',
-    header: 'Go-Live',
-    accessorKey: 'goLiveDate',
+    id: 'accountManager',
+    header: 'AM',
+    accessorKey: 'accountManager',
     cell: ({ getValue }) => {
       const v = getValue<string | null>();
-      return v ? (
-        <span className="text-neutral-500 text-xs">{formatShortDate(v)}</span>
-      ) : (
-        <span className="text-neutral-300">—</span>
-      );
+      return v ? <span className="text-neutral-500 text-xs">{v}</span> : <span className="text-neutral-300">—</span>;
     },
   },
   {
-    id: 'salesRepId',
+    id: 'salesRep',
     header: 'Rep',
-    accessorKey: 'salesRepId',
-    cell: ({ getValue }) => (
-      <span className="text-neutral-500 text-xs">{getValue<string>()}</span>
-    ),
+    accessorKey: 'salesRep',
+    cell: ({ getValue }) => {
+      const v = getValue<string | null>();
+      return v ? <span className="text-neutral-500 text-xs">{v}</span> : <span className="text-neutral-300">—</span>;
+    },
   },
 ];
 
@@ -132,8 +119,8 @@ export function BackbookAccount({ filters }: BackbookAccountProps) {
   useEffect(() => {
     setIsLoading(true);
     setError(null);
-    fetchBackbook(filters)
-      .then((data) => setAccounts(data as AccountRow[]))
+    Promise.all([fetchManagedAccounts(filters), fetchUnmanagedAccounts(filters)])
+      .then(([managed, unmanaged]) => setAccounts([...managed, ...unmanaged]))
       .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [filters]);
@@ -142,10 +129,10 @@ export function BackbookAccount({ filters }: BackbookAccountProps) {
   const unmanagedCount = accounts.length - managedCount;
   const managedRevenue = accounts
     .filter((a) => a.isManaged)
-    .reduce((s, a) => s + (a.netRevenueMTD ?? 0), 0);
+    .reduce((s, a) => s + a.mrYTD, 0);
   const unmanagedRevenue = accounts
     .filter((a) => !a.isManaged)
-    .reduce((s, a) => s + (a.netRevenueMTD ?? 0), 0);
+    .reduce((s, a) => s + a.mrYTD, 0);
 
   return (
     <section aria-labelledby="backbook-heading">
