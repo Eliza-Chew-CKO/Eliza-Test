@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { DashboardFilters } from '@/types';
-import GlobalFilters from '@/components/layout/GlobalFilters';
+import { GlobalFilters } from '@/components/layout/GlobalFilters';
 import { ExecutiveSummary } from '@/components/sections/ExecutiveSummary';
 import { FinancialTrends } from '@/components/sections/FinancialTrends';
 import { FrontbookPipeline } from '@/components/sections/FrontbookPipeline';
