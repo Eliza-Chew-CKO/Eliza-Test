@@ -108,13 +108,18 @@ export async function mapAccounts(
       : null;
 
     if (!dryRun) {
+      // If this SF ID is already claimed by a different alias, don't store it
+      // (multiple aliases can legitimately share an SF Account ID in the source data).
+      let safesfId: string | undefined = acct.sfId || undefined;
+      if (safesfId) {
+        const existing = await prisma.account.findUnique({ where: { salesforceId: safesfId } });
+        if (existing && existing.alias !== acct.alias) safesfId = undefined;
+      }
+
       await prisma.account.upsert({
         where: { alias: acct.alias },
         create: {
-          // Only set salesforceId when we have a real 18-digit SF ID.
-          // Leaving it undefined avoids unique constraint collisions when
-          // multiple aliases share the same SF account or have no ID at all.
-          salesforceId: acct.sfId || undefined,
+          salesforceId: safesfId,
           alias: acct.alias,
           tier: acct.tier as any ?? undefined,
           rating: acct.rating || undefined,
@@ -125,7 +130,7 @@ export async function mapAccounts(
           pod: acct.pod || undefined,
         },
         update: {
-          salesforceId: acct.sfId || undefined,
+          salesforceId: safesfId,
           tier: acct.tier as any ?? undefined,
           rating: acct.rating ?? undefined,
           isManaged: acct.isManaged,
