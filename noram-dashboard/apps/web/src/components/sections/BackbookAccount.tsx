@@ -1,67 +1,179 @@
 'use client';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const VAMP_TREND = [
-  { month: 'Jan', ratio: 0.008 }, { month: 'Feb', ratio: 0.009 }, { month: 'Mar', ratio: 0.011 },
-  { month: 'Apr', ratio: 0.013 }, { month: 'May', ratio: 0.010 }, { month: 'Jun', ratio: 0.007 },
-];
+import { useState, useEffect, useMemo } from 'react';
+import { type ColumnDef } from '@tanstack/react-table';
+import KPICard from '@/components/kpi/KPICard';
+import DataTable from '@/components/tables/DataTable';
+import { fetchBackbook } from '@/lib/api';
+import { formatCurrency, formatMonth } from '@/lib/utils';
+import type { DashboardFilters, Account } from '@/types';
 
-const MANAGED_CLIENTS = [
-  { alias: 'Merchant A', tier: 'Tier 1', rating: 'Gold', qtdMR: 320000, pctToTarget: 0.94, ytdTPV: 45_000_000 },
-  { alias: 'Merchant B', tier: 'Tier 1', rating: 'Gold', qtdMR: 280000, pctToTarget: 1.02, ytdTPV: 38_000_000 },
-  { alias: 'Merchant C', tier: 'Tier 2', rating: 'Silver', qtdMR: 150000, pctToTarget: 0.87, ytdTPV: 22_000_000 },
-];
+interface BackbookAccountProps {
+  filters: DashboardFilters;
+}
 
-export default function BackbookAccount() {
+export default function BackbookAccount({ filters }: BackbookAccountProps) {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await fetchBackbook(filters);
+        if (!cancelled) setAccounts(data);
+      } catch (err) {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : 'Failed to load backbook accounts');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [filters]);
+
+  const managed = accounts.filter((a) => a.isManaged);
+  const unmanaged = accounts.filter((a) => !a.isManaged);
+
+  const columns = useMemo<ColumnDef<Account, unknown>[]>(
+    () => [
+      {
+        id: 'alias',
+        header: 'Account',
+        accessorKey: 'alias',
+        cell: ({ getValue }) => (
+          <span className="font-medium text-neutral-900">{getValue() as string}</span>
+        ),
+      },
+      {
+        id: 'tier',
+        header: 'Tier',
+        accessorKey: 'tier',
+        cell: ({ getValue }) => {
+          const tier = getValue() as string;
+          const colorMap: Record<string, string> = {
+            Enterprise:   'bg-primary-50 text-primary-700',
+            'Mid-Market': 'bg-purple-50 text-purple-700',
+            SMB:          'bg-neutral-100 text-neutral-600',
+          };
+          return (
+            <span className={`badge ${colorMap[tier] ?? 'bg-neutral-100 text-neutral-600'}`}>
+              {tier}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'isManaged',
+        header: 'Managed',
+        accessorKey: 'isManaged',
+        cell: ({ getValue }) =>
+          getValue() ? (
+            <span className="badge badge-success">Managed</span>
+          ) : (
+            <span className="badge bg-neutral-100 text-neutral-500">Unmanaged</span>
+          ),
+      },
+      {
+        id: 'region',
+        header: 'Region',
+        accessorKey: 'region',
+        cell: ({ getValue }) => <span className="text-xs text-neutral-600">{getValue() as string}</span>,
+      },
+      {
+        id: 'netRevenueMTD',
+        header: 'Net Rev MTD',
+        // This would be joined from FinancialActual in the actual API response
+        accessorFn: () => 0,
+        cell: () => <span className="tabular-nums text-neutral-400">—</span>,
+      },
+      {
+        id: 'tpvAmount',
+        header: 'TPV',
+        accessorFn: () => 0,
+        cell: () => <span className="tabular-nums text-neutral-400">—</span>,
+      },
+      {
+        id: 'vampRatio',
+        header: 'VAMP Ratio',
+        accessorFn: () => null,
+        cell: () => <span className="text-neutral-400">—</span>,
+      },
+      {
+        id: 'goLiveDate',
+        header: 'Go-Live',
+        accessorKey: 'goLiveDate',
+        cell: ({ getValue }) => {
+          const v = getValue() as string | null;
+          return v ? (
+            <span className="text-xs text-neutral-500">{formatMonth(v)}</span>
+          ) : (
+            <span className="text-neutral-300">—</span>
+          );
+        },
+      },
+      {
+        id: 'salesRepId',
+        header: 'Rep',
+        accessorKey: 'salesRepId',
+        cell: ({ getValue }) => <span className="text-xs text-neutral-500">{getValue() as string}</span>,
+      },
+    ],
+    [],
+  );
+
   return (
-    <section id="backbook-account" className="space-y-6">
-      <h2 className="text-lg font-semibold text-white">Backbook & Account Management</h2>
-
-      {/* Managed Client Table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">Managed Backbook Client Performance</h3>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-gray-500 border-b border-gray-800">
-              <th className="pb-2">Client</th>
-              <th className="pb-2">Tier</th>
-              <th className="pb-2">Rating</th>
-              <th className="pb-2 text-right">QTD MR</th>
-              <th className="pb-2 text-right">MR % to Target</th>
-              <th className="pb-2 text-right">YTD TPV</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MANAGED_CLIENTS.map((c) => (
-              <tr key={c.alias} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                <td className="py-2 text-white font-medium">{c.alias}</td>
-                <td className="py-2 text-gray-400">{c.tier}</td>
-                <td className="py-2 text-gray-400">{c.rating}</td>
-                <td className="py-2 text-right text-gray-300">${(c.qtdMR/1000).toFixed(0)}K</td>
-                <td className={`py-2 text-right font-medium ${c.pctToTarget >= 1 ? 'text-green-400' : 'text-red-400'}`}>
-                  {(c.pctToTarget * 100).toFixed(0)}%
-                </td>
-                <td className="py-2 text-right text-gray-300">${(c.ytdTPV/1_000_000).toFixed(1)}M</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <section className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-neutral-900">Backbook Accounts</h2>
+        <p className="text-sm text-neutral-500">
+          Live account portfolio — managed vs unmanaged breakdown, revenue, and VAMP health.
+        </p>
       </div>
 
-      {/* VAMP Ratio Trend */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-gray-300 mb-4">Backbook VAMP Ratio by Month</h3>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={VAMP_TREND}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 12 }} />
-            <YAxis tickFormatter={(v) => `${(v * 100).toFixed(1)}%`} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-            <Tooltip formatter={(v: number) => [`${(v * 100).toFixed(2)}%`, 'VAMP Ratio']} />
-            {/* Excessive threshold line at 1.5% */}
-            <Line type="monotone" dataKey="ratio" stroke="#ef4444" strokeWidth={2} dot={{ fill: '#ef4444' }} name="VAMP Ratio" />
-          </LineChart>
-        </ResponsiveContainer>
+      {error && (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+          {error}
+        </div>
+      )}
+
+      {/* Managed vs unmanaged KPI summary */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <KPICard
+          title="Total Accounts"
+          value={accounts.length}
+          formatAs="number"
+          isLoading={isLoading}
+        />
+        <KPICard
+          title="Managed Accounts"
+          value={managed.length}
+          formatAs="number"
+          subtitle={`${accounts.length ? Math.round((managed.length / accounts.length) * 100) : 0}% of portfolio`}
+          isLoading={isLoading}
+        />
+        <KPICard
+          title="Unmanaged Accounts"
+          value={unmanaged.length}
+          formatAs="number"
+          isLoading={isLoading}
+        />
+        <KPICard
+          title="Enterprise Accounts"
+          value={accounts.filter((a) => a.tier === 'Enterprise').length}
+          formatAs="number"
+          isLoading={isLoading}
+        />
       </div>
+
+      {/* Accounts table */}
+      <DataTable data={accounts} columns={columns} isLoading={isLoading} pageSize={15} />
     </section>
   );
 }

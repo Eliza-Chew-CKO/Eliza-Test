@@ -1,7 +1,7 @@
 'use client';
 
-import { cn, formatCurrency, formatPct, calcVariance } from '@/lib/utils';
 import type { User } from '@/types';
+import { formatCurrency, formatPct, calcVariance, cn } from '@/lib/utils';
 
 interface LeaderboardRow {
   rank: number;
@@ -16,129 +16,140 @@ interface LeaderboardTableProps {
   isLoading?: boolean;
 }
 
-const MEDAL_COLORS: Record<number, string> = {
-  1: 'text-yellow-500',
-  2: 'text-neutral-400',
-  3: 'text-amber-600',
+// Medal colours for top 3
+const MEDAL: Record<number, { bg: string; text: string; icon: string }> = {
+  1: { bg: 'bg-yellow-50', text: 'text-yellow-700', icon: '🥇' },
+  2: { bg: 'bg-neutral-100', text: 'text-neutral-600', icon: '🥈' },
+  3: { bg: 'bg-orange-50', text: 'text-orange-600', icon: '🥉' },
 };
 
-const MEDAL_LABELS: Record<number, string> = {
-  1: '🥇',
-  2: '🥈',
-  3: '🥉',
-};
-
-function SkeletonRow() {
-  return (
-    <tr className="border-b border-neutral-100">
-      {[40, 140, 90, 90, 70, 80].map((w, i) => (
-        <td key={i} className="px-4 py-3">
-          <div
-            className="h-3.5 animate-pulse rounded bg-neutral-200"
-            style={{ width: w }}
-          />
-        </td>
-      ))}
-    </tr>
-  );
-}
+const SKELETON_ROWS = 5;
 
 export default function LeaderboardTable({ data, isLoading = false }: LeaderboardTableProps) {
+  if (isLoading) {
+    return (
+      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm animate-pulse">
+        <table className="min-w-full divide-y divide-neutral-200">
+          <thead className="bg-neutral-50">
+            <tr>
+              {['Rank', 'Rep', 'Revenue', 'Target', 'Variance', 'Deals'].map((h) => (
+                <th
+                  key={h}
+                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-400"
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+              <tr key={i}>
+                {Array.from({ length: 6 }).map((_, j) => (
+                  <td key={j} className="px-4 py-3">
+                    <div className="h-4 rounded bg-neutral-200" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-card">
-      <table className="w-full text-sm">
-        <thead className="bg-neutral-50 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+      <table className="min-w-full divide-y divide-neutral-200">
+        <thead className="bg-neutral-50">
           <tr>
-            <th className="px-4 py-3 text-left w-12">Rank</th>
-            <th className="px-4 py-3 text-left">Rep</th>
-            <th className="px-4 py-3 text-right">Revenue</th>
-            <th className="px-4 py-3 text-right">Target</th>
-            <th className="px-4 py-3 text-right">Variance</th>
-            <th className="px-4 py-3 text-right">Deals</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 w-12">
+              Rank
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Rep
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Revenue
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Target
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Variance
+            </th>
+            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Deals
+            </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-neutral-100">
-          {isLoading
-            ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
-            : data.length === 0
-            ? (
-              <tr>
-                <td colSpan={6} className="py-10 text-center text-neutral-400">
-                  No data available
-                </td>
-              </tr>
-            )
-            : data.map((row) => {
-                const v = calcVariance(row.revenue, row.target);
-                const isPositive = v.absolute >= 0;
+        <tbody className="divide-y divide-neutral-100 bg-white">
+          {data.map((row) => {
+            const medal = MEDAL[row.rank];
+            const { absolute, pct } = calcVariance(row.revenue, row.target);
+            const isPositive = absolute >= 0;
 
-                return (
-                  <tr
-                    key={row.rep.id}
+            return (
+              <tr
+                key={row.rep.id}
+                className={cn(
+                  'transition-colors',
+                  medal ? medal.bg : 'hover:bg-neutral-50'
+                )}
+              >
+                {/* Rank */}
+                <td className="px-4 py-3 text-sm font-semibold text-neutral-700">
+                  {medal ? (
+                    <span title={`#${row.rank}`}>{medal.icon}</span>
+                  ) : (
+                    <span className={cn('tabular-nums', medal?.text ?? 'text-neutral-400')}>
+                      #{row.rank}
+                    </span>
+                  )}
+                </td>
+
+                {/* Rep */}
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700">
+                      {row.rep.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-neutral-900">{row.rep.name}</p>
+                      <p className="text-xs text-neutral-400">{row.rep.salesRegion}</p>
+                    </div>
+                  </div>
+                </td>
+
+                {/* Revenue */}
+                <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums text-neutral-900">
+                  {formatCurrency(row.revenue)}
+                </td>
+
+                {/* Target */}
+                <td className="px-4 py-3 text-right text-sm tabular-nums text-neutral-500">
+                  {formatCurrency(row.target)}
+                </td>
+
+                {/* Variance */}
+                <td className="px-4 py-3 text-right">
+                  <span
                     className={cn(
-                      'transition-colors hover:bg-neutral-50',
-                      row.rank <= 3 && 'bg-neutral-50/50',
+                      'inline-block rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums',
+                      isPositive ? 'bg-success-50 text-success-700' : 'bg-danger-50 text-danger-700'
                     )}
                   >
-                    {/* Rank */}
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          'text-sm font-bold',
-                          MEDAL_COLORS[row.rank] ?? 'text-neutral-500',
-                        )}
-                      >
-                        {MEDAL_LABELS[row.rank] ?? `#${row.rank}`}
-                      </span>
-                    </td>
+                    {isPositive ? '+' : ''}{formatPct(pct)}
+                  </span>
+                </td>
 
-                    {/* Rep */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700">
-                          {row.rep.name
-                            .split(' ')
-                            .map((n) => n[0])
-                            .slice(0, 2)
-                            .join('')}
-                        </div>
-                        <div>
-                          <p className="font-medium text-neutral-900">{row.rep.name}</p>
-                          <p className="text-xs text-neutral-400">{row.rep.salesRegion}</p>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Revenue */}
-                    <td className="px-4 py-3 text-right font-medium text-neutral-900">
-                      {formatCurrency(row.revenue)}
-                    </td>
-
-                    {/* Target */}
-                    <td className="px-4 py-3 text-right text-neutral-500">
-                      {formatCurrency(row.target)}
-                    </td>
-
-                    {/* Variance */}
-                    <td className="px-4 py-3 text-right">
-                      <span
-                        className={cn(
-                          'text-xs font-semibold',
-                          isPositive ? 'text-success-600' : 'text-danger-600',
-                        )}
-                      >
-                        {isPositive ? '+' : ''}
-                        {formatPct(v.pct / 100)}
-                      </span>
-                    </td>
-
-                    {/* Deals */}
-                    <td className="px-4 py-3 text-right font-medium text-neutral-700">
-                      {row.deals}
-                    </td>
-                  </tr>
-                );
-              })}
+                {/* Deals closed */}
+                <td className="px-4 py-3 text-right text-sm font-medium tabular-nums text-neutral-700">
+                  {row.deals}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

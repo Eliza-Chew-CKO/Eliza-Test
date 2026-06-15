@@ -6,11 +6,11 @@ import {
   Line,
   XAxis,
   YAxis,
+  CartesianGrid,
   Tooltip,
   Legend,
-  CartesianGrid,
 } from 'recharts';
-import { formatNumber } from '@/lib/utils';
+import { formatCompact } from '@/lib/utils';
 
 interface LineConfig {
   key: string;
@@ -19,16 +19,25 @@ interface LineConfig {
 }
 
 interface LineChartProps {
-  data: { month: string; [key: string]: any }[];
+  data: Array<{ month: string; [key: string]: unknown }>;
   lines: LineConfig[];
   height?: number;
+  yAxisFormatter?: (value: number) => string;
 }
 
-export default function LineChart({ data, lines, height = 300 }: LineChartProps) {
+export default function LineChart({
+  data,
+  lines,
+  height = 300,
+  yAxisFormatter = formatCompact,
+}: LineChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <RechartsLineChart data={data} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+      <RechartsLineChart
+        data={data}
+        margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
         <XAxis
           dataKey="month"
           tick={{ fontSize: 12, fill: '#6b7280' }}
@@ -36,34 +45,39 @@ export default function LineChart({ data, lines, height = 300 }: LineChartProps)
           tickLine={false}
         />
         <YAxis
+          tickFormatter={yAxisFormatter}
           tick={{ fontSize: 12, fill: '#6b7280' }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={formatNumber}
+          width={60}
         />
         <Tooltip
-          formatter={(value: number, name: string) => [formatNumber(value), name]}
+          formatter={(value: number, name: string) => [
+            formatCompact(value),
+            name,
+          ]}
           contentStyle={{
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
             boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+            fontSize: '13px',
           }}
         />
         <Legend
           iconType="circle"
           iconSize={8}
-          wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
+          wrapperStyle={{ fontSize: '13px', paddingTop: '12px' }}
         />
-        {lines.map((line) => (
+        {lines.map(({ key, color, label }) => (
           <Line
-            key={line.key}
+            key={key}
             type="monotone"
-            dataKey={line.key}
-            name={line.label}
-            stroke={line.color}
-            strokeWidth={2}
-            dot={{ r: 3, fill: line.color }}
-            activeDot={{ r: 5 }}
+            dataKey={key}
+            name={label}
+            stroke={color}
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 4, strokeWidth: 0 }}
           />
         ))}
       </RechartsLineChart>

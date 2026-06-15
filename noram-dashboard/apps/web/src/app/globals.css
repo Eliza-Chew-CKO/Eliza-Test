@@ -2,83 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Dashboard color tokens ── */
+/* ─── Dashboard CSS custom properties ─────────────────────────────────────── */
 :root {
   /* Brand */
   --color-primary:        #0070f3;
   --color-primary-dark:   #005acc;
-  --color-primary-light:  #4d90ff;
+  --color-primary-light:  #e6f0ff;
 
-  /* Backgrounds */
-  --color-bg-page:        #f9fafb; /* neutral-50 */
-  --color-bg-card:        #ffffff;
-  --color-bg-sidebar:     #111827; /* neutral-900 */
+  /* Surfaces */
+  --color-bg:             #f9fafb;
+  --color-surface:        #ffffff;
+  --color-surface-raised: #f3f4f6;
+  --color-border:         #e5e7eb;
 
   /* Text */
-  --color-text-primary:   #111827; /* neutral-900 */
-  --color-text-secondary: #6b7280; /* neutral-500 */
-  --color-text-muted:     #9ca3af; /* neutral-400 */
-  --color-text-inverse:   #ffffff;
+  --color-text-primary:   #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-muted:     #9ca3af;
 
-  /* Borders */
-  --color-border:         #e5e7eb; /* neutral-200 */
-  --color-border-focus:   #0070f3;
-
-  /* Semantic */
-  --color-success:        #22c55e;
+  /* Status */
+  --color-success:        #10b981;
   --color-warning:        #f59e0b;
   --color-danger:         #ef4444;
 
-  /* Chart palette */
-  --chart-1:              #0070f3;
-  --chart-2:              #22c55e;
-  --chart-3:              #f59e0b;
-  --chart-4:              #8b5cf6;
-  --chart-5:              #06b6d4;
-  --chart-6:              #f97316;
+  /* Chart palette (ordered for use in data series) */
+  --chart-1: #0070f3;
+  --chart-2: #10b981;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+  --chart-5: #ec4899;
+  --chart-6: #06b6d4;
 }
 
-/* ── Base ── */
-body {
-  @apply bg-neutral-50 font-sans text-neutral-900 antialiased;
+/* Dark mode overrides */
+.dark {
+  --color-bg:             #111827;
+  --color-surface:        #1f2937;
+  --color-surface-raised: #374151;
+  --color-border:         #374151;
+  --color-text-primary:   #f9fafb;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted:     #9ca3af;
 }
 
-/* ── Utility layer extensions ── */
+/* ─── Base styles ─────────────────────────────────────────────────────────── */
+@layer base {
+  body {
+    @apply bg-gray-50 font-sans text-neutral-900 antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ─── Component utilities ─────────────────────────────────────────────────── */
 @layer components {
   .card {
-    @apply bg-white rounded-xl shadow-card p-6;
+    @apply bg-white rounded-xl shadow-card border border-neutral-200 p-5;
   }
 
-  .section-title {
-    @apply text-xl font-semibold text-neutral-900 mb-1;
+  .card-title {
+    @apply text-sm font-semibold text-neutral-500 uppercase tracking-wide mb-1;
   }
 
-  .section-description {
-    @apply text-sm text-neutral-500 mb-6;
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 
-  .btn-primary {
-    @apply inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2
-           text-sm font-medium text-white hover:bg-primary-600
-           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
-           transition-colors;
+  .badge-success {
+    @apply badge bg-success-50 text-success-700;
   }
 
-  .btn-secondary {
-    @apply inline-flex items-center gap-2 rounded-lg border border-neutral-200
-           bg-white px-4 py-2 text-sm font-medium text-neutral-700
-           hover:bg-neutral-50 focus:outline-none focus:ring-2
-           focus:ring-primary-500 focus:ring-offset-2 transition-colors;
+  .badge-warning {
+    @apply badge bg-warning-50 text-warning-700;
   }
 
-  .input {
-    @apply block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2
-           text-sm text-neutral-900 placeholder-neutral-400
-           focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+  .badge-danger {
+    @apply badge bg-danger-50 text-danger-700;
   }
 
-  /* Skeleton loader animation */
+  /* Skeleton loader */
   .skeleton {
-    @apply animate-pulse rounded bg-neutral-200;
+    @apply animate-pulse bg-neutral-200 rounded;
   }
 }
