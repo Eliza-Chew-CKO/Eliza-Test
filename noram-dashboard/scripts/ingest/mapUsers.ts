@@ -1,83 +1,102 @@
-/**
- * mapUsers.ts
- *
- * Maps rows from the "NORAM Users - AW" Excel sheet to Prisma UserCreateInput objects.
- *
- * Expected sheet columns (case-insensitive match attempted):
- *   - "Name"         → user.name
- *   - "Email"        → user.email  (used as unique key for upsert)
- *   - "Role"         → user.role   (e.g. "AE", "AM", "Manager")
- *   - "Region"       → user.salesRegion
- *
- * Notes:
- * - Rows with missing email or name are skipped with a warning.
- * - Email is lowercased and trimmed for deduplication.
- * - Role values are normalised: "Account Executive" → "AE", "Account Manager" → "AM".
- */
+import * as XLSX from 'xlsx';
+import { PrismaClient } from '@prisma/client';
+import { readSheet, excelDateToJs } from './parseExcel';
 
-import type { Prisma } from '@prisma/client';
-import type { SheetRow } from './parseExcel';
-
-// ─── Expected column name constants ──────────────────────────────────────────
-// Adjust these if the source Excel uses different column headers.
-const COL_NAME   = 'Name';
-const COL_EMAIL  = 'Email';
-const COL_ROLE   = 'Role';
-const COL_REGION = 'Region';
-
-// ─── Role normalisation map ───────────────────────────────────────────────────
-const ROLE_MAP: Record<string, string> = {
-  'account executive':   'AE',
-  'ae':                  'AE',
-  'account manager':     'AM',
-  'am':                  'AM',
-  'manager':             'Manager',
-  'sales manager':       'Manager',
-  'admin':               'Admin',
-  'administrator':       'Admin',
-};
-
-function normaliseRole(raw: string | null | undefined): string {
-  if (!raw) return 'AE';
-  const lower = raw.toString().toLowerCase().trim();
-  return ROLE_MAP[lower] ?? raw.toString().trim();
+// Columns present in both "NORAM Users - AM" and "Users - Sales" sheets.
+// Row 0 is the Salesforce import banner; Row 1 is the real header.
+interface UserRow {
+  'Last Login': number | string;
+  '18 Digit User ID': string;
+  'Full Name': string;
+  'Email': string;
+  'Manager: Full Name': string;
+  'Start Date': number | string;
+  'Date Ramped': number | string;
+  'Not Ramped': boolean | string;
+  'Sales Region': string;
+  'Country (text only)': string;
+  'Department': string;
+  'CK Department': string;
+  'Title': string;
+  'Country': string;
+  'Seniority': string;
+  'Region': string;
+  'Pods'?: string; // Sales sheet only
 }
 
-// ─── Mapper ───────────────────────────────────────────────────────────────────
+function inferRole(title: string, department: string): string {
+  const t = (title ?? '').toLowerCase();
+  const d = (department ?? '').toLowerCase();
+  if (t.includes('account manager') || t.includes('am,')) return 'ACCOUNT_MANAGER';
+  if (t.includes('sales engineer') || t.includes('se,')) return 'SALES_ENGINEER';
+  if (t.includes('bdr') || t.includes('business development')) return 'BDR';
+  if (t.includes('manager') || t.includes('director') || t.includes('vp') || t.includes('head of')) return 'MANAGER';
+  if (d.includes('revenue ops') || d.includes('revops')) return 'REVENUE_OPS';
+  return 'SALES_REP';
+}
 
-/**
- * Maps raw sheet rows to Prisma UserCreateInput objects.
- *
- * @param rows - Array of plain objects from XLSX.utils.sheet_to_json
- * @returns Array of UserCreateInput ready for prisma.user.upsert()
- */
-export function mapUsers(rows: SheetRow[]): Prisma.UserCreateInput[] {
-  const mapped: Prisma.UserCreateInput[] = [];
+export async function mapUsers(
+  wb: XLSX.WorkBook,
+  prisma: PrismaClient,
+  dryRun = false,
+) {
+  const amRows = readSheet<UserRow>(wb, 'NORAM Users - AM', 1);
+  const salesRows = readSheet<UserRow>(wb, 'Users - Sales', 1);
+  const allRows = [...amRows, ...salesRows];
 
-  for (const row of rows) {
-    const name  = row[COL_NAME]?.toString().trim();
-    const email = row[COL_EMAIL]?.toString().trim().toLowerCase();
-    const role  = normaliseRole(row[COL_ROLE]);
-    const region = row[COL_REGION]?.toString().trim() ?? 'NORAM';
+  let upserted = 0;
+  let skipped = 0;
 
-    if (!name || !email) {
-      console.warn('[mapUsers] Skipping row with missing name or email:', row);
-      continue;
+  for (const row of allRows) {
+    const email = String(row['Email'] ?? '').trim().toLowerCase();
+    const sfId = String(row['18 Digit User ID'] ?? '').trim();
+    const fullName = String(row['Full Name'] ?? '').trim();
+
+    if (!email || !fullName) { skipped++; continue; }
+
+    const startDate = excelDateToJs(row['Start Date']);
+    const dateRamped = excelDateToJs(row['Date Ramped']);
+    const isRamped = row['Not Ramped'] === false || row['Not Ramped'] === '' || row['Not Ramped'] === 'FALSE';
+    const role = inferRole(String(row['Title'] ?? ''), String(row['Department'] ?? ''));
+
+    if (!dryRun) {
+      await prisma.user.upsert({
+        where: { email },
+        create: {
+          salesforceId: sfId || null,
+          fullName,
+          email,
+          title: String(row['Title'] ?? '').trim() || null,
+          department: String(row['CK Department'] ?? row['Department'] ?? '').trim() || null,
+          role: role as any,
+          salesRegion: String(row['Sales Region'] ?? row['Region'] ?? '').trim() || null,
+          country: String(row['Country (text only)'] ?? row['Country'] ?? '').trim() || null,
+          seniority: String(row['Seniority'] ?? '').trim() || null,
+          pod: String(row['Pods'] ?? '').trim() || null,
+          managerName: String(row['Manager: Full Name'] ?? '').trim() || null,
+          startDate,
+          dateRamped,
+          isRamped,
+        },
+        update: {
+          salesforceId: sfId || undefined,
+          fullName,
+          title: String(row['Title'] ?? '').trim() || null,
+          department: String(row['CK Department'] ?? row['Department'] ?? '').trim() || null,
+          role: role as any,
+          salesRegion: String(row['Sales Region'] ?? row['Region'] ?? '').trim() || null,
+          country: String(row['Country (text only)'] ?? row['Country'] ?? '').trim() || null,
+          seniority: String(row['Seniority'] ?? '').trim() || null,
+          pod: String(row['Pods'] ?? '').trim() || null,
+          managerName: String(row['Manager: Full Name'] ?? '').trim() || null,
+          startDate: startDate ?? undefined,
+          dateRamped: dateRamped ?? undefined,
+          isRamped,
+        },
+      });
     }
-
-    // Basic email format guard
-    if (!email.includes('@')) {
-      console.warn(`[mapUsers] Skipping row — invalid email: "${email}"`);
-      continue;
-    }
-
-    mapped.push({
-      name,
-      email,
-      role,
-      salesRegion: region,
-    });
+    upserted++;
   }
 
-  return mapped;
+  console.log(`   ✓ Users: ${upserted} upserted, ${skipped} skipped`);
 }

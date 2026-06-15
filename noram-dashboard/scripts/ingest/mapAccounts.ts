@@ -1,103 +1,140 @@
-/**
- * mapAccounts.ts
- *
- * Maps account data rows to Prisma AccountCreateInput objects.
- *
- * Accounts are derived from the "Data" sheet (financial actuals) since there
- * is no dedicated Account sheet in the source workbook. Each unique account
- * alias encountered in the Data sheet produces one Account record.
- *
- * Expected relevant columns in the "Data" sheet:
- *   - "Account" / "Account Alias"  → account.alias
- *   - "Tier"                       → account.tier
- *   - "Managed"                    → account.isManaged (boolean)
- *   - "Sales Rep"                  → account.salesRepId (matched to User.email)
- *   - "Account Manager"            → account.accountManagerId (nullable)
- *   - "Go Live Date"               → account.goLiveDate
- *   - "Region"                     → account.region
- *   - "Referral Partner"           → account.referralPartner
- *   - "Sector"                     → account.sector
- */
+import * as XLSX from 'xlsx';
+import { PrismaClient } from '@prisma/client';
+import { readSheet, excelDateToJs } from './parseExcel';
 
-import type { Prisma } from '@prisma/client';
-import type { SheetRow } from './parseExcel';
+// Accounts are derived from both CM sheets, using the alias as the unique key.
+// We build a merged map so each alias produces one Account record.
 
-// ─── Column name constants ────────────────────────────────────────────────────
-const COL_ALIAS   = 'Account';
-const COL_TIER    = 'Tier';
-const COL_MANAGED = 'Managed';
-const COL_REP     = 'Sales Rep';
-const COL_AM      = 'Account Manager';
-const COL_GOLIVE  = 'Go Live Date';
-const COL_REGION  = 'Region';
-const COL_PARTNER = 'Referral Partner';
-const COL_SECTOR  = 'Sector';
-
-// ─── Tier inference ───────────────────────────────────────────────────────────
-
-/**
- * Infers account tier from a raw string value.
- * Falls back to 'SMB' if not recognisable.
- */
-function normaliseTier(raw: string | null | undefined): string {
-  if (!raw) return 'SMB';
-  const lower = raw.toString().toLowerCase().trim();
-  if (lower.includes('enterprise'))  return 'Enterprise';
-  if (lower.includes('mid'))         return 'Mid-Market';
-  if (lower.includes('smb') || lower.includes('small')) return 'SMB';
-  return raw.toString().trim();
+interface CMRow {
+  'Client Attributes Salesforce Alias': string;
+  'Client Attributes Account ID': string;
+  'Salesforce Opportunity Opportunity Owner Name (Salesforce)': string;
+  'Salesforce Account Account Manager Name (Salesforce)': string;
+  'Client Attributes (Merchant) Entity Tier': string;
+  'Client Attributes Sales Commission Incentive Rating': string;
+  'Client Attributes Alias Go Live Month Month': number | string;
+  'Managed? ': string;
+  'Pods': string;
 }
 
-function parseBoolean(raw: any): boolean {
-  if (typeof raw === 'boolean') return raw;
-  if (typeof raw === 'string') {
-    return ['yes', 'true', '1', 'y'].includes(raw.toLowerCase().trim());
-  }
-  if (typeof raw === 'number') return raw === 1;
-  return false;
+interface GoLiveRow {
+  'Client Attributes Salesforce Alias': string;
+  'Client Attributes Alias Go Live Month Month': number | string;
 }
 
-function parseDate(raw: any): Date | null {
+function normalizeTier(raw: string): string | null {
   if (!raw) return null;
-  if (raw instanceof Date) return raw;
-  const d = new Date(raw);
-  return isNaN(d.getTime()) ? null : d;
+  const t = String(raw).toLowerCase().trim();
+  if (t.includes('tier 1') || t === '1') return 'TIER_1';
+  if (t.includes('tier 2') || t === '2') return 'TIER_2';
+  if (t.includes('tier 3') || t === '3') return 'TIER_3';
+  return null;
 }
 
-// ─── Mapper ───────────────────────────────────────────────────────────────────
+export async function mapAccounts(
+  wb: XLSX.WorkBook,
+  prisma: PrismaClient,
+  dryRun = false,
+) {
+  const fbRows = readSheet<CMRow>(wb, '1. CM - FB', 1);
+  const bbRows = readSheet<CMRow>(wb, '1. CM - BB', 1);
 
-/**
- * Deduplicates and maps account rows to AccountCreateInput objects.
- * Uses salesRepId as a placeholder string (email or name) — the actual DB
- * ID must be resolved via upsert lookups at insert time.
- *
- * @param rows - Rows from the "Data" sheet
- */
-export function mapAccounts(rows: SheetRow[]): Prisma.AccountUncheckedCreateInput[] {
-  const seen = new Set<string>();
-  const accounts: Prisma.AccountUncheckedCreateInput[] = [];
+  // Build alias → account data map, BB takes precedence for managed/tier/AM fields
+  const accountMap = new Map<string, {
+    alias: string;
+    sfId: string;
+    salesRepName: string;
+    amName: string;
+    tier: string | null;
+    rating: string | null;
+    isManaged: boolean;
+    goLiveDate: Date | null;
+    pod: string;
+  }>();
 
-  for (const row of rows) {
-    const alias = row[COL_ALIAS]?.toString().trim();
-    if (!alias || seen.has(alias)) continue;
-    seen.add(alias);
+  for (const row of [...fbRows, ...bbRows]) {
+    const alias = String(row['Client Attributes Salesforce Alias'] ?? '').trim();
+    if (!alias) continue;
 
-    const goLiveDate = parseDate(row[COL_GOLIVE]);
+    const existing = accountMap.get(alias);
+    const tier = normalizeTier(String(row['Client Attributes (Merchant) Entity Tier'] ?? ''));
+    const goLiveDate = excelDateToJs(row['Client Attributes Alias Go Live Month Month']);
+    const isManaged = String(row['Managed? '] ?? '').toLowerCase().includes('managed');
 
-    accounts.push({
+    accountMap.set(alias, {
       alias,
-      tier:            normaliseTier(row[COL_TIER]),
-      isManaged:       parseBoolean(row[COL_MANAGED]),
-      // salesRepId is stored as the rep's email/name here; the upsert script
-      // must resolve this to the actual User.id before inserting.
-      salesRepId:      row[COL_REP]?.toString().trim() ?? 'UNKNOWN',
-      accountManagerId: row[COL_AM]?.toString().trim() || null,
-      goLiveDate:      goLiveDate ?? undefined,
-      region:          row[COL_REGION]?.toString().trim() ?? 'NORAM',
-      referralPartner: row[COL_PARTNER]?.toString().trim() || null,
-      sector:          row[COL_SECTOR]?.toString().trim() || null,
+      sfId: String(row['Client Attributes Account ID'] ?? '').trim() || (existing?.sfId ?? ''),
+      salesRepName: String(row['Salesforce Opportunity Opportunity Owner Name (Salesforce)'] ?? '').trim() || (existing?.salesRepName ?? ''),
+      amName: String(row['Salesforce Account Account Manager Name (Salesforce)'] ?? '').trim() || (existing?.amName ?? ''),
+      tier: tier ?? existing?.tier ?? null,
+      rating: String(row['Client Attributes Sales Commission Incentive Rating'] ?? '').trim() || existing?.rating || null,
+      isManaged: isManaged || (existing?.isManaged ?? false),
+      goLiveDate: goLiveDate ?? existing?.goLiveDate ?? null,
+      pod: String(row['Pods'] ?? '').trim() || (existing?.pod ?? ''),
     });
   }
 
-  return accounts;
+  // Also pull closed-won opps for additional accounts
+  interface ClosedWonRow {
+    'Account Name': string;
+    '18 Digit Account ID': string;
+    'Website Domain': string;
+  }
+  const cwRows = readSheet<ClosedWonRow>(wb, 'Closed won opps', 1);
+  for (const row of cwRows) {
+    const name = String(row['Account Name'] ?? '').trim();
+    const sfId = String(row['18 Digit Account ID'] ?? '').trim();
+    if (!name || !sfId) continue;
+    // Use account name as alias fallback if not already in map
+    if (!accountMap.has(name) && sfId) {
+      accountMap.set(name, {
+        alias: name, sfId, salesRepName: '', amName: '', tier: null, rating: null,
+        isManaged: false, goLiveDate: null, pod: '',
+      });
+    }
+  }
+
+  let upserted = 0;
+
+  for (const acct of accountMap.values()) {
+    if (!acct.alias) continue;
+
+    // Resolve user foreign keys by name
+    const salesRep = acct.salesRepName
+      ? await prisma.user.findFirst({ where: { fullName: { contains: acct.salesRepName, mode: 'insensitive' } } })
+      : null;
+    const accountManager = acct.amName
+      ? await prisma.user.findFirst({ where: { fullName: { contains: acct.amName, mode: 'insensitive' } } })
+      : null;
+
+    if (!dryRun) {
+      await prisma.account.upsert({
+        where: { alias: acct.alias },
+        create: {
+          salesforceId: acct.sfId || `NOID-${acct.alias}`,
+          alias: acct.alias,
+          tier: acct.tier as any ?? undefined,
+          rating: acct.rating,
+          isManaged: acct.isManaged,
+          salesRepId: salesRep?.id ?? null,
+          accountManagerId: accountManager?.id ?? null,
+          goLiveDate: acct.goLiveDate,
+          pod: acct.pod || null,
+        },
+        update: {
+          salesforceId: acct.sfId || undefined,
+          tier: acct.tier as any ?? undefined,
+          rating: acct.rating ?? undefined,
+          isManaged: acct.isManaged,
+          salesRepId: salesRep?.id ?? undefined,
+          accountManagerId: accountManager?.id ?? undefined,
+          goLiveDate: acct.goLiveDate ?? undefined,
+          pod: acct.pod || undefined,
+        },
+      });
+    }
+    upserted++;
+  }
+
+  console.log(`   ✓ Accounts: ${upserted} upserted`);
 }

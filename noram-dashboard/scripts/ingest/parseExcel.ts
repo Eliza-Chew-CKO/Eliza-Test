@@ -1,146 +1,117 @@
-/**
- * parseExcel.ts
- *
- * Entry point for the data ingestion pipeline. Reads an Excel workbook and
- * dispatches each sheet to its dedicated mapper function.
- *
- * Usage:
- *   npx ts-node scripts/ingest/parseExcel.ts --file path/to/noram-data.xlsx
- *
- * Sheet-to-mapper mapping:
- *   "NORAM Users - AW"              → mapUsers     (sales reps and account managers)
- *   "Data"                          → mapFinancials (monthly fee/revenue data per account)
- *   "BIN TPV - AW"                  → mapFinancials (TPV data split by BIN type)
- *   "Targets"                       → mapTargets   (monthly frontbook/backbook targets)
- *   "Excessive VAMP"                → mapVAMP      (Visa VAMP fraud records)
- *   "Salesforce Opportunity Snapshot" → mapOpportunities (pipeline snapshot from SFDC)
- */
-
 import * as path from 'path';
 import * as XLSX from 'xlsx';
 import { mapUsers } from './mapUsers';
 import { mapAccounts } from './mapAccounts';
+import { mapOpportunities } from './mapOpportunities';
 import { mapFinancials } from './mapFinancials';
 import { mapTargets } from './mapTargets';
 import { mapVAMP } from './mapVAMP';
-import { mapOpportunities } from './mapOpportunities';
+import { prisma } from '../../packages/db/src';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export type WorkbookSheets = {
+  'NORAM Users - AM': XLSX.WorkSheet;
+  'Users - Sales': XLSX.WorkSheet;
+  '1. CM - FB': XLSX.WorkSheet;
+  '1. CM - BB': XLSX.WorkSheet;
+  '2. TPV - US Bin': XLSX.WorkSheet;
+  'Targets': XLSX.WorkSheet;
+  '4. Excessive VAMP': XLSX.WorkSheet;
+  '6. VAMP flags': XLSX.WorkSheet;
+  'Closed won opps': XLSX.WorkSheet;
+  'Weighted pipeline': XLSX.WorkSheet;
+  '5. Opp created': XLSX.WorkSheet;
+  '5. Explore meetings ': XLSX.WorkSheet;
+  '5. Propose ': XLSX.WorkSheet;
+  '5. Trade ': XLSX.WorkSheet;
+  '5. Handover ': XLSX.WorkSheet;
+  '5. MAF submitted': XLSX.WorkSheet;
+  '5. Technical ': XLSX.WorkSheet;
+  '5. Underwriting': XLSX.WorkSheet;
+  '3. Go-lives': XLSX.WorkSheet;
+  '7. AM targets': XLSX.WorkSheet;
+};
 
-export type SheetName =
-  | 'NORAM Users - AW'
-  | 'Data'
-  | 'BIN TPV - AW'
-  | 'Targets'
-  | 'Excessive VAMP'
-  | 'Salesforce Opportunity Snapshot';
-
-export type SheetRow = Record<string, any>;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Reads a single sheet from a workbook and returns its rows as plain objects.
- * Uses xlsx's sheet_to_json with `defval: null` to preserve empty cells.
- */
-export function readSheet(workbook: XLSX.WorkBook, sheetName: SheetName): SheetRow[] {
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) {
-    console.warn(`[parseExcel] Sheet not found: "${sheetName}" — skipping`);
+export function readSheet<T = Record<string, unknown>>(
+  wb: XLSX.WorkBook,
+  sheetName: string,
+  headerRow = 1,
+): T[] {
+  const ws = wb.Sheets[sheetName];
+  if (!ws) {
+    console.warn(`  ⚠ Sheet "${sheetName}" not found — skipping`);
     return [];
   }
-  return XLSX.utils.sheet_to_json<SheetRow>(sheet, { defval: null });
+  const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' });
+  const headers = raw[headerRow] as string[];
+  const rows: T[] = [];
+  for (let i = headerRow + 1; i < raw.length; i++) {
+    const row = raw[i] as unknown[];
+    if (row.every((v) => v === '' || v === null || v === undefined)) continue;
+    const obj: Record<string, unknown> = {};
+    headers.forEach((h, idx) => {
+      obj[String(h).trim()] = row[idx] ?? '';
+    });
+    rows.push(obj as T);
+  }
+  return rows;
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
-/**
- * Parses the workbook at the given file path and dispatches each sheet
- * to the appropriate mapper. Returns a structured object containing all
- * mapped records, ready for upsert into the database.
- */
-export async function parseWorkbook(filePath: string) {
-  const absolutePath = path.resolve(filePath);
-  console.log(`[parseExcel] Reading workbook: ${absolutePath}`);
-
-  const workbook = XLSX.readFile(absolutePath, {
-    cellDates: true,  // parse date cells as JS Date objects
-    cellNF: false,    // skip number format strings
-    cellText: false,  // skip formatted text
-  });
-
-  console.log(`[parseExcel] Sheets found: ${workbook.SheetNames.join(', ')}`);
-
-  // ── "NORAM Users - AW" → sales reps and account managers ──────────────────
-  const userRows = readSheet(workbook, 'NORAM Users - AW');
-  const users = mapUsers(userRows);
-  console.log(`[parseExcel] Mapped ${users.length} users`);
-
-  // ── "Data" → monthly financial actuals per account ─────────────────────────
-  const dataRows = readSheet(workbook, 'Data');
-  const financialsData = mapFinancials(dataRows, 'DATA');
-  console.log(`[parseExcel] Mapped ${financialsData.length} financial actuals (DATA sheet)`);
-
-  // ── "BIN TPV - AW" → monthly TPV split by BIN type ────────────────────────
-  const binRows = readSheet(workbook, 'BIN TPV - AW');
-  const financialsBin = mapFinancials(binRows, 'BIN_TPV');
-  console.log(`[parseExcel] Mapped ${financialsBin.length} financial actuals (BIN TPV sheet)`);
-
-  // ── "Targets" → monthly frontbook / backbook / TPV targets ────────────────
-  const targetRows = readSheet(workbook, 'Targets');
-  const targets = mapTargets(targetRows);
-  console.log(`[parseExcel] Mapped ${targets.length} targets`);
-
-  // ── "Excessive VAMP" → VAMP fraud records ─────────────────────────────────
-  const vampRows = readSheet(workbook, 'Excessive VAMP');
-  const vampRecords = mapVAMP(vampRows);
-  console.log(`[parseExcel] Mapped ${vampRecords.length} VAMP records`);
-
-  // ── "Salesforce Opportunity Snapshot" → pipeline opportunities ────────────
-  const oppRows = readSheet(workbook, 'Salesforce Opportunity Snapshot');
-  const opportunities = mapOpportunities(oppRows);
-  console.log(`[parseExcel] Mapped ${opportunities.length} opportunities`);
-
-  // Accounts are derived from the financial actuals (unique account aliases)
-  const accounts = mapAccounts(dataRows);
-  console.log(`[parseExcel] Derived ${accounts.length} accounts`);
-
-  return {
-    users,
-    accounts,
-    financials: [...financialsData, ...financialsBin],
-    targets,
-    vampRecords,
-    opportunities,
-  };
+/** Convert an Excel serial date number to a JS Date (UTC midnight). */
+export function excelDateToJs(serial: number | string | ''): Date | null {
+  if (serial === '' || serial == null) return null;
+  const n = typeof serial === 'string' ? parseFloat(serial) : serial;
+  if (isNaN(n) || n <= 0) return null;
+  // Excel epoch: 1 Jan 1900 = day 1 (with Lotus 1-2-3 leap-year bug)
+  const utc = (n - 25569) * 86400 * 1000;
+  return new Date(utc);
 }
 
-// ─── CLI entry point ──────────────────────────────────────────────────────────
+/** Parse a value that may be a number, numeric string, or blank into a float. */
+export function toFloat(v: unknown): number | null {
+  if (v === '' || v == null) return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
+  return isNaN(n) ? null : n;
+}
 
+export async function parseAndIngest(filePath: string, dryRun = false) {
+  console.log(`\n📂 Reading: ${path.basename(filePath)}`);
+  const wb = XLSX.readFile(filePath);
+  console.log(`   Sheets found: ${wb.SheetNames.length}`);
+
+  // Order matters: Users → Accounts → everything else
+  console.log('\n1/7 Ingesting users...');
+  await mapUsers(wb, prisma, dryRun);
+
+  console.log('\n2/7 Ingesting accounts...');
+  await mapAccounts(wb, prisma, dryRun);
+
+  console.log('\n3/7 Ingesting opportunities & pipeline snapshots...');
+  await mapOpportunities(wb, prisma, dryRun);
+
+  console.log('\n4/7 Ingesting financial actuals (FB + BB + TPV)...');
+  await mapFinancials(wb, prisma, dryRun);
+
+  console.log('\n5/7 Ingesting targets...');
+  await mapTargets(wb, prisma, dryRun);
+
+  console.log('\n6/7 Ingesting VAMP records...');
+  await mapVAMP(wb, prisma, dryRun);
+
+  console.log('\n✅ Ingest complete.\n');
+}
+
+// ─── CLI entry point ───────────────────────────────────────────────────────────
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const fileArgIndex = args.indexOf('--file');
+  const fileArg = args.find((a) => a.startsWith('--file='))?.split('=')[1];
+  const dryRun = args.includes('--dry-run');
 
-  if (fileArgIndex === -1 || !args[fileArgIndex + 1]) {
-    console.error('Usage: ts-node parseExcel.ts --file <path-to-excel-file>');
+  if (!fileArg) {
+    console.error('Usage: ts-node parseExcel.ts --file=./export.xlsx [--dry-run]');
     process.exit(1);
   }
 
-  const filePath = args[fileArgIndex + 1];
-
-  parseWorkbook(filePath)
-    .then((result) => {
-      console.log('\n[parseExcel] Parse complete. Summary:');
-      console.log(`  Users:         ${result.users.length}`);
-      console.log(`  Accounts:      ${result.accounts.length}`);
-      console.log(`  Financials:    ${result.financials.length}`);
-      console.log(`  Targets:       ${result.targets.length}`);
-      console.log(`  VAMP Records:  ${result.vampRecords.length}`);
-      console.log(`  Opportunities: ${result.opportunities.length}`);
-      console.log('\nNext step: pipe this output to an upsert script.');
-    })
-    .catch((err: Error) => {
-      console.error('[parseExcel] Fatal error:', err.message);
-      process.exit(1);
-    });
+  parseAndIngest(path.resolve(fileArg), dryRun)
+    .catch((e) => { console.error(e); process.exit(1); })
+    .finally(() => prisma.$disconnect());
 }

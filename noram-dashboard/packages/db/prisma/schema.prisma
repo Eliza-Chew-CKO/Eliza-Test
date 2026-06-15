@@ -1,6 +1,3 @@
-// This is your Prisma schema file.
-// Learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,144 +7,322 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+// ─── Users ────────────────────────────────────────────────────────────────────
 
-enum TargetType {
-  FRONTBOOK_BASE
-  FRONTBOOK_ROLL
-  BACKBOOK_MANAGED
-  BACKBOOK_UNMANAGED
-  TPV
-}
-
-// ─── Models ───────────────────────────────────────────────────────────────────
-
-/// Sales reps, account managers, and other team members.
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  email       String   @unique
-  /// e.g. "AE" | "AM" | "Manager" | "Admin"
-  role        String
-  salesRegion String
-  createdAt   DateTime @default(now())
+  id              String    @id @default(cuid())
+  salesforceId    String?   @unique // 18-digit SF User ID
+  fullName        String
+  email           String    @unique
+  title           String?
+  department      String?
+  role            UserRole
+  salesRegion     String?
+  country         String?
+  seniority       String?
+  pod             String?
+  managerName     String?
+  startDate       DateTime?
+  dateRamped      DateTime?
+  isRamped        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  // Relations — a user can be the primary sales rep on many accounts
-  accounts        Account[] @relation("SalesRep")
-  // A user can be the account manager (AM) on many accounts
-  managedAccounts Account[] @relation("AccountManager")
-  // A user can be the primary rep on many opportunities
-  opportunities   Opportunity[] @relation("PrimaryRep")
+  accountsAsRep       Account[]     @relation("SalesRep")
+  accountsAsAM        Account[]     @relation("AccountManager")
+  opportunitiesAsRep  Opportunity[] @relation("OpportunitySalesRep")
+  opportunitiesAs2nd  Opportunity[] @relation("OpportunitySecondOwner")
+  goLives             GoLive[]
+  vampFlags           VampRecord[]
 }
 
-/// A merchant / customer account.
+enum UserRole {
+  SALES_REP
+  ACCOUNT_MANAGER
+  SALES_ENGINEER
+  BDR
+  MANAGER
+  REVENUE_OPS
+  EXECUTIVE
+}
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
 model Account {
-  id               String    @id @default(cuid())
-  /// Display name used in all reporting (may differ from legal entity name)
-  alias            String
-  /// "Enterprise" | "Mid-Market" | "SMB"
-  tier             String
-  /// Whether the account has a dedicated Account Manager
-  isManaged        Boolean   @default(false)
-  salesRepId       String
-  salesRep         User      @relation("SalesRep", fields: [salesRepId], references: [id])
+  id              String    @id @default(cuid())
+  salesforceId    String    @unique // 18-digit SF Account ID
+  alias           String    @unique
+  accountName     String?
+  tier            Tier?
+  rating          String?   // Gold, Silver, Bronze
+  isManaged       Boolean   @default(false)
+  salesRepId      String?
   accountManagerId String?
-  accountManager   User?     @relation("AccountManager", fields: [accountManagerId], references: [id])
-  goLiveDate       DateTime?
-  region           String
-  referralPartner  String?
-  sector           String?
-  createdAt        DateTime  @default(now())
+  goLiveDate      DateTime?
+  region          String?
+  referralPartner String?
+  sector          String?
+  websiteDomain   String?
+  pod             String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  // Relations
-  financials   FinancialActual[]
-  vampRecords  VampRecord[]
-  opportunities Opportunity[]
+  salesRep       User?             @relation("SalesRep", fields: [salesRepId], references: [id])
+  accountManager User?             @relation("AccountManager", fields: [accountManagerId], references: [id])
+  opportunities  Opportunity[]
+  financials     FinancialActual[]
+  vampRecords    VampRecord[]
+  goLives        GoLive[]
+  amTargets      AMTarget[]
 }
 
-/// A sales opportunity (sourced from Salesforce).
+enum Tier {
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+// ─── Opportunities ────────────────────────────────────────────────────────────
+
 model Opportunity {
-  id          String    @id @default(cuid())
-  accountId   String
-  account     Account   @relation(fields: [accountId], references: [id])
-  salesRepId  String
-  salesRep    User      @relation("PrimaryRep", fields: [salesRepId], references: [id])
-  /// Pipeline stage: Discovery | Scoping | Proposal | Negotiation | Closed Won | Closed Lost
-  stage       String
-  /// Deal type: "New Logo" | "Expansion" | "Renewal"
-  type        String
-  /// Committed monthly revenue at go-live (base, no ramp)
-  baseMonthlyRevenue    Decimal
-  /// Expected monthly revenue after ramp (roll rate)
-  rollMonthlyRevenue    Decimal
-  /// baseMonthlyRevenue × stage probability weighting
-  weightedExpectedMNR   Decimal
-  closeDate   DateTime
-  goLiveDate  DateTime?
-  rating      String?
-  /// Second owner / overlay rep on the deal
-  secondOwnerId String?
-  /// JSON array of { stage, enteredAt, exitedAt } objects
-  stageHistory  Json      @default("[]")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                   String           @id @default(cuid())
+  salesforceId         String           @unique // 18-digit SF Opportunity ID
+  opportunityName      String
+  accountId            String?
+  accountName          String
+  salesRepId           String?
+  salesRepName         String?
+  secondOwnerId        String?
+  secondOwnerName      String?
+  salesEngineerName    String?
+  bdrName              String?
+  stage                String           // raw stage string from SF
+  subStage             String?          // E1, E2, P1, T1, H1, H2 etc.
+  normalizedStage      OpportunityStage
+  type                 OpportunityType  @default(NEW_BUSINESS)
+  rating               String?
+  expectedMonthlyNR    Decimal?         @db.Decimal(18, 2)
+  expectedRevenue      Decimal?         @db.Decimal(18, 2)
+  maxAnnualTPV         Decimal?         @db.Decimal(18, 2)
+  minMonthlyBilling    Decimal?         @db.Decimal(18, 2)
+  revopsAnnualEstimate Decimal?         @db.Decimal(18, 2)
+  closeDate            DateTime?
+  createdDate          DateTime?
+  lastActivityDate     DateTime?
+  ageInDays            Int?
+  leadSource           String?
+  leadSourceBucket     String?
+  websiteDomain        String?
+  pod                  String?
+  isNoram              Boolean          @default(true)
+
+  // Pipeline stage transition dates (from stage-specific tabs)
+  firstExploreMeetingDate DateTime?
+  dateSetToPropose        DateTime?
+  dateSetToTrade          DateTime?
+  dateSetToHandover       DateTime?
+  dateMAFSubmitted        DateTime?
+  dateTechnicalStage4     DateTime?
+  dateUnderwritingDone    DateTime?
+
+  // Handover / underwriting change metadata
+  handoverEditedBy       String?
+  underwritingNewValue   String?
+
+  last90Days   Boolean?  // flag from pipeline snapshot tabs
+  oppStatus    String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  account     Account? @relation(fields: [accountId], references: [id])
+  salesRep    User?    @relation("OpportunitySalesRep", fields: [salesRepId], references: [id])
+  secondOwner User?    @relation("OpportunitySecondOwner", fields: [secondOwnerId], references: [id])
+  pipelineSnapshots PipelineSnapshot[]
 }
 
-/// Monthly financial actuals per account, keyed by reporting month.
-/// Supports multiple rows per account/month when data is split by BIN type and acquirer.
+enum OpportunityStage {
+  EXPLORE
+  PROPOSE
+  TRADE
+  HANDOVER
+  LIVE
+  CLOSED_WON
+  MERCHANT_LOST
+  DISQUALIFIED
+  CLOSED_LOST
+  OTHER
+}
+
+enum OpportunityType {
+  NEW_BUSINESS
+  EXPANSION
+  RENEWAL
+  RFP
+}
+
+// ─── Pipeline Snapshots (Weighted Pipeline history) ───────────────────────────
+
+model PipelineSnapshot {
+  id              String   @id @default(cuid())
+  opportunityId   String
+  opportunityName String
+  snapshotDate    DateTime
+  stageName       String
+  salesRepName    String?
+  secondOwnerName String?
+  bdrName         String?
+  salesEngineerName String?
+  weightedExpectedMNR Decimal @db.Decimal(18, 2)
+  createdAt       DateTime @default(now())
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id])
+
+  @@unique([opportunityId, snapshotDate])
+}
+
+// ─── Financial Actuals ────────────────────────────────────────────────────────
+
 model FinancialActual {
-  id             String   @id @default(cuid())
-  accountId      String
-  account        Account  @relation(fields: [accountId], references: [id])
-  /// First day of the reporting month (e.g. 2025-06-01 00:00:00 UTC)
-  reportingMonth DateTime
-  totalFees      Decimal
-  grossFX        Decimal
-  ccpExclusion   Decimal
-  netRevenue     Decimal
-  tpvAmount      Decimal
-  /// BIN classification (e.g. "DEBIT" | "CREDIT" | "PREPAID")
-  binType        String?
-  /// Acquirer identifier (e.g. "ACQ_VISA_US")
-  acquirerId     String?
-  createdAt      DateTime @default(now())
+  id                    String   @id @default(cuid())
+  accountId             String
+  reportingMonth        DateTime // first day of month
+  bookType              BookType
+  salesRepName          String?
+  accountManagerName    String?
+  pod                   String?
+  tier                  String?
+  rating                String?
 
-  @@unique([accountId, reportingMonth, binType, acquirerId])
+  // Revenue columns
+  totalFeeIncGrossFX    Decimal  @db.Decimal(18, 2) // "Total Fee (inc Gross FX and CCP)"
+  totalFeeIncNetFX      Decimal? @db.Decimal(18, 2) // "Total Fee (inc Net FX and CCP)"
+  expectedMNR           Decimal? @db.Decimal(18, 2) // "Total Expected Monthly Net Revenue ($)"
+  minBilling            Decimal? @db.Decimal(18, 2)
+  tpvAmount             Decimal? @db.Decimal(18, 2)
+
+  isManaged             Boolean?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@unique([accountId, reportingMonth, bookType])
 }
 
-/// Monthly revenue and volume targets.
+enum BookType {
+  FRONTBOOK
+  BACKBOOK
+}
+
+// ─── TPV (US BIN) ─────────────────────────────────────────────────────────────
+
+model TpvActual {
+  id              String   @id @default(cuid())
+  reportDate      DateTime
+  paymentVolume   Decimal  @db.Decimal(18, 2)
+  salesRepName    String?
+  pod             String?
+  createdAt       DateTime @default(now())
+
+  @@unique([reportDate, salesRepName])
+}
+
+// ─── Go-Lives ─────────────────────────────────────────────────────────────────
+
+model GoLive {
+  id              String   @id @default(cuid())
+  accountId       String?
+  alias           String
+  reportingMonth  DateTime
+  goLiveMonth     DateTime?
+  salesRepId      String?
+  salesRepName    String?
+  secondOwnerName String?
+  managerName     String?
+  rating          String?
+  pod             String?
+  createdAt       DateTime @default(now())
+
+  account  Account? @relation(fields: [accountId], references: [id])
+  salesRep User?    @relation(fields: [salesRepId], references: [id])
+
+  @@unique([alias, reportingMonth])
+}
+
+// ─── Targets ──────────────────────────────────────────────────────────────────
+
 model Target {
   id          String     @id @default(cuid())
-  /// Format: "YYYY-MM" (e.g. "2025-06")
-  period      String
+  period      DateTime   // first day of month
   type        TargetType
-  amount      Decimal
-  /// Target number of accounts to go live (only relevant for FRONTBOOK_BASE)
-  goLiveCount Int?
+  amount      Decimal    @db.Decimal(18, 4)
   createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@unique([period, type])
 }
 
-/// Visa Acquirer Monitoring Programme fraud records per account per month.
-/// Multiple rows per account/month are possible when data is broken out by acquirer.
-model VampRecord {
-  id                   String   @id @default(cuid())
-  accountId            String
-  account              Account  @relation(fields: [accountId], references: [id])
-  reportingMonth       DateTime
-  createdEvents        Int
-  fraudEvents          Int
-  totalCapturedEvents  Int
-  /// vampRatio = fraudEvents / totalCapturedEvents
-  vampRatio            Decimal
-  /// Source classification from the acquirer report
-  vampType             String
-  /// Internal assessment: "Under review" | "Actioned" | "Monitoring" | null
-  vampAssessment       String?
-  acquirerCountry      String?
-  acquirerId           String?
-  createdAt            DateTime @default(now())
+enum TargetType {
+  FRONTBOOK_NR          // incremental cumulative Frontbook NR ($K)
+  FRONTBOOK_NR_CUMUL    // cumulative YTD Frontbook NR ($K)
+  BACKBOOK_NR           // monthly Backbook NR target ($M)
+  TPV_RUN_RATE_MONTHLY  // monthly US BIN TPV run rate ($B)
+  TPV_ANNUALISED        // annualised US BIN TPV ($B)
+  GO_LIVE_GOLD          // Gold go-lives count
+  GO_LIVE_TOTAL         // Total go-lives count
+  HEADCOUNT             // Sales headcount
+}
 
-  @@unique([accountId, reportingMonth, acquirerId])
+// ─── AM Targets (per-account quarterly) ──────────────────────────────────────
+
+model AMTarget {
+  id              String   @id @default(cuid())
+  accountId       String
+  alias           String
+  quarter         String   // e.g. "2026-Q1"
+  targetVersion   String?  // e.g. "0+12"
+  revenueTarget   Decimal? @db.Decimal(18, 2)
+  pvTarget        Decimal? @db.Decimal(18, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@unique([accountId, quarter])
+}
+
+// ─── VAMP Records ─────────────────────────────────────────────────────────────
+
+model VampRecord {
+  id                  String   @id @default(cuid())
+  accountId           String?
+  alias               String
+  entityName          String?
+  reportingMonth      DateTime
+  globalAcquirerId    String?
+  salesRepName        String?
+  accountName         String?
+  websiteDomain       String?
+
+  createdEvents       Int      @default(0)
+  fraudEvents         Int      @default(0)
+  capturedEvents      Int      @default(0)
+  vampRatio           Decimal  @db.Decimal(10, 6)
+  vampType            String?  // "NA", "Excessive", etc.
+  vampAssessment      Decimal? @db.Decimal(18, 2)
+
+  isExcessiveFlag     Boolean  @default(false) // from "4. Excessive VAMP" tab
+  excessiveOwner      String?
+  excessiveAcquirer   String?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  account  Account? @relation(fields: [accountId], references: [id])
+  salesRep User?    @relation(fields: [salesRepId], references: [id])
+  salesRepId String?
+
+  @@unique([alias, reportingMonth, globalAcquirerId])
 }
