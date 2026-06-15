@@ -4,114 +4,130 @@
  * Maps rows from the "Targets" sheet to Prisma TargetCreateInput objects.
  *
  * Expected sheet columns:
- *   Period          — "YYYY-MM" or "Mon-YY" (e.g. "Jun-25") — the target month
- *   Type            — target type string (mapped to TargetType enum below)
- *   Amount          — target revenue amount (USD)
- *   Go-Live Count   — optional count of expected go-lives (FRONTBOOK_BASE only)
+ *   - "Period"         → target.period in "YYYY-MM" format
+ *                        (also accepts "Jan 2025" / "January 2025" / Date objects)
+ *   - "Type"           → target.type — one of:
+ *                          "Frontbook Base" | "Frontbook Roll" | "Backbook Managed" |
+ *                          "Backbook Unmanaged" | "TPV"
+ *   - "Amount"         → target.amount (currency value)
+ *   - "Go Live Count"  → target.goLiveCount (integer, only used for FRONTBOOK_BASE rows)
  *
- * Type mapping:
- *   "Frontbook Base" / "FB Base"     → FRONTBOOK_BASE
- *   "Frontbook Roll" / "FB Roll"     → FRONTBOOK_ROLL
- *   "Backbook Managed"               → BACKBOOK_MANAGED
- *   "Backbook Unmanaged"             → BACKBOOK_UNMANAGED
- *   "TPV"                            → TPV
+ * Unique constraint: [period, type] — the upsert script should use this pair
+ * as the where clause.
  */
 
-type TargetType =
-  | 'FRONTBOOK_BASE'
-  | 'FRONTBOOK_ROLL'
-  | 'BACKBOOK_MANAGED'
-  | 'BACKBOOK_UNMANAGED'
-  | 'TPV';
+import type { Prisma, TargetType } from '@prisma/client';
+import type { SheetRow } from './parseExcel';
+import { format } from 'date-fns';
 
-type TargetCreateInput = {
-  period: string;
-  type: TargetType;
-  amount: number;
-  goLiveCount?: number;
-};
+// ─── Column constants ─────────────────────────────────────────────────────────
+const COL_PERIOD    = 'Period';
+const COL_TYPE      = 'Type';
+const COL_AMOUNT    = 'Amount';
+const COL_GOLIVE_CT = 'Go Live Count';
 
-// ─── Type label → enum mapping ────────────────────────────────────────────────
+// ─── Type mapping ─────────────────────────────────────────────────────────────
+
 const TYPE_MAP: Record<string, TargetType> = {
-  'frontbook base':    'FRONTBOOK_BASE',
-  'fb base':           'FRONTBOOK_BASE',
-  'frontbook roll':    'FRONTBOOK_ROLL',
-  'fb roll':           'FRONTBOOK_ROLL',
-  'backbook managed':  'BACKBOOK_MANAGED',
-  'managed':           'BACKBOOK_MANAGED',
-  'backbook unmanaged':'BACKBOOK_UNMANAGED',
-  'unmanaged':         'BACKBOOK_UNMANAGED',
-  'tpv':               'TPV',
+  'frontbook base':        'FRONTBOOK_BASE',
+  'frontbook - base':      'FRONTBOOK_BASE',
+  'base mnr':              'FRONTBOOK_BASE',
+  'frontbook roll':        'FRONTBOOK_ROLL',
+  'frontbook - roll':      'FRONTBOOK_ROLL',
+  'roll mnr':              'FRONTBOOK_ROLL',
+  'backbook managed':      'BACKBOOK_MANAGED',
+  'backbook - managed':    'BACKBOOK_MANAGED',
+  'managed':               'BACKBOOK_MANAGED',
+  'backbook unmanaged':    'BACKBOOK_UNMANAGED',
+  'backbook - unmanaged':  'BACKBOOK_UNMANAGED',
+  'unmanaged':             'BACKBOOK_UNMANAGED',
+  'tpv':                   'TPV',
+  'total payment volume':  'TPV',
 };
 
-function normaliseType(raw: string): TargetType | null {
-  return TYPE_MAP[raw.toLowerCase().trim()] ?? null;
+function normaliseTargetType(raw: string | null | undefined): TargetType | null {
+  if (!raw) return null;
+  return TYPE_MAP[raw.toString().toLowerCase().trim()] ?? null;
 }
 
+// ─── Period parsing ───────────────────────────────────────────────────────────
+
 /**
- * parsePeriod
- *
- * Converts various month representations to "YYYY-MM":
- *   "Jun-25"    → "2025-06"
- *   "2025-06"   → "2025-06"
- *   "2025-06-01"→ "2025-06"
+ * Parses a period value into "YYYY-MM" format.
+ * Accepts Date objects, ISO strings, "Jan 2025", or "2025-06" strings.
  */
-function parsePeriod(val: unknown): string | null {
-  const s = String(val ?? '').trim();
-  if (!s) return null;
+function parsePeriod(raw: any): string | null {
+  if (!raw) return null;
 
-  // Already "YYYY-MM"
-  if (/^\d{4}-\d{2}$/.test(s)) return s;
+  if (raw instanceof Date) {
+    return format(raw, 'yyyy-MM');
+  }
 
-  // "YYYY-MM-DD"
-  const isoMatch = s.match(/^(\d{4})-(\d{2})-\d{2}$/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
 
-  // "Mon-YY" e.g. "Jun-25"
-  const shortMatch = s.match(/^([A-Za-z]{3})[-\s](\d{2})$/);
-  if (shortMatch) {
-    const d = new Date(`${shortMatch[1]} 20${shortMatch[2]}`);
+    // Already in YYYY-MM format
+    if (/^\d{4}-\d{2}$/.test(trimmed)) return trimmed;
+
+    // Try parsing as a generic date string
+    const d = new Date(trimmed);
     if (!isNaN(d.getTime())) {
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      return `${d.getFullYear()}-${mm}`;
+      return format(d, 'yyyy-MM');
     }
+  }
+
+  // Excel serial number
+  if (typeof raw === 'number') {
+    const excelEpoch = new Date(1899, 11, 30);
+    const d = new Date(excelEpoch.getTime() + raw * 86_400_000);
+    return format(d, 'yyyy-MM');
   }
 
   return null;
 }
 
-function parseAmount(val: unknown): number {
-  const n = parseFloat(String(val ?? '0').replace(/[^0-9.-]/g, ''));
-  return isNaN(n) ? 0 : n;
+function parseCurrency(raw: any): number {
+  if (!raw) return 0;
+  if (typeof raw === 'number') return raw;
+  const cleaned = raw.toString().replace(/[$,\s]/g, '');
+  return parseFloat(cleaned) || 0;
 }
 
-function parseGoLiveCount(val: unknown): number | undefined {
-  if (!val) return undefined;
-  const n = parseInt(String(val), 10);
-  return isNaN(n) ? undefined : n;
-}
+// ─── Mapper ───────────────────────────────────────────────────────────────────
 
 /**
- * mapTargets
+ * Maps raw target rows to Prisma TargetCreateInput objects.
+ * Rows with unrecognised type or invalid period are skipped with a warning.
  */
-export function mapTargets(rows: Record<string, unknown>[]): TargetCreateInput[] {
-  const results: TargetCreateInput[] = [];
+export function mapTargets(rows: SheetRow[]): Prisma.TargetCreateInput[] {
+  const mapped: Prisma.TargetCreateInput[] = [];
 
   for (const row of rows) {
-    const period = parsePeriod(row['Period'] ?? row['Month'] ?? row['Date']);
-    if (!period) continue;
+    const period = parsePeriod(row[COL_PERIOD]);
+    const type   = normaliseTargetType(row[COL_TYPE]);
 
-    const type = normaliseType(String(row['Type'] ?? row['Target Type'] ?? ''));
-    if (!type) {
-      console.warn(`[mapTargets] Unknown target type: "${row['Type']}" — skipping row`);
+    if (!period) {
+      console.warn('[mapTargets] Skipping row with invalid period:', row);
       continue;
     }
 
-    const amount = parseAmount(row['Amount'] ?? row['Target']);
-    const goLiveCount = parseGoLiveCount(row['Go-Live Count'] ?? row['Go Live Count']);
+    if (!type) {
+      console.warn(`[mapTargets] Skipping row with unknown type "${row[COL_TYPE]}":`, row);
+      continue;
+    }
 
-    results.push({ period, type, amount, goLiveCount });
+    const amount     = parseCurrency(row[COL_AMOUNT]);
+    const goLiveCount = row[COL_GOLIVE_CT] != null
+      ? parseInt(row[COL_GOLIVE_CT].toString(), 10) || null
+      : null;
+
+    mapped.push({
+      period,
+      type,
+      amount,
+      goLiveCount,
+    });
   }
 
-  return results;
+  return mapped;
 }
