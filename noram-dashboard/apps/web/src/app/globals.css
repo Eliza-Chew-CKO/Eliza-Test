@@ -2,65 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dashboard color token custom properties */
+/* ─── CSS custom properties for dashboard colour tokens ─────────────────────── */
 :root {
-  --color-primary: #0070f3;
-  --color-primary-dark: #005acc;
-  --color-bg: #f9fafb;
-  --color-surface: #ffffff;
-  --color-border: #e5e7eb;
-  --color-text-primary: #111827;
-  --color-text-secondary: #6b7280;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  /* Brand / primary */
+  --color-primary:        #0070f3;
+  --color-primary-light:  #3b82f6;
+  --color-primary-dark:   #1d4ed8;
 
-  /* Sidebar */
-  --sidebar-width: 240px;
-  --header-height: 64px;
+  /* Semantic */
+  --color-success:        #16a34a;
+  --color-warning:        #d97706;
+  --color-danger:         #e11d48;
+
+  /* Neutral surface colours */
+  --color-bg:             #f9fafb;
+  --color-surface:        #ffffff;
+  --color-border:         #e5e7eb;
+  --color-text:           #111827;
+  --color-text-muted:     #6b7280;
+
+  /* Chart palette */
+  --chart-1:  #0070f3;
+  --chart-2:  #6366f1;
+  --chart-3:  #06b6d4;
+  --chart-4:  #10b981;
+  --chart-5:  #f59e0b;
+  --chart-6:  #ef4444;
 }
 
-/* Base body defaults */
+/* Dark mode overrides */
+.dark {
+  --color-bg:         #030712;
+  --color-surface:    #111827;
+  --color-border:     #1f2937;
+  --color-text:       #f9fafb;
+  --color-text-muted: #9ca3af;
+}
+
+/* ─── Base styles ────────────────────────────────────────────────────────────── */
 body {
-  @apply bg-gray-50 font-sans text-neutral-900 antialiased;
+  @apply bg-gray-50 font-sans text-gray-900 antialiased;
 }
 
-/* Smooth scrolling */
+/* Smooth scrolling for anchor links */
 html {
   scroll-behavior: smooth;
 }
 
-/* Card utility */
-@layer components {
-  .card {
-    @apply bg-white rounded-card shadow-card p-5;
-  }
-
-  .card-hover {
-    @apply card transition-shadow duration-200 hover:shadow-card-hover;
-  }
-
-  .section-title {
-    @apply text-lg font-semibold text-neutral-800 mb-1;
-  }
-
-  .section-description {
-    @apply text-sm text-neutral-500 mb-6;
-  }
-
-  .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-
-  .badge-success {
-    @apply badge bg-success-50 text-success-700;
-  }
-
-  .badge-danger {
-    @apply badge bg-danger-50 text-danger-700;
-  }
-
-  .badge-warning {
-    @apply badge bg-warning-50 text-warning-700;
+/* ─── Utility layer additions ────────────────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
   }
 }

@@ -1,106 +1,114 @@
 import type { Request, Response, NextFunction } from 'express';
 
-export type DateRange = 'MTD' | 'YTD' | 'CUSTOM';
+// ─── Extend Express Request to carry parsed filters ───────────────────────────
 
-export interface DashboardFilters {
-  dateRange: DateRange;
-  startDate?: string;
-  endDate?: string;
+export interface ParsedFilters {
+  dateRange: 'MTD' | 'YTD' | 'CUSTOM';
+  startDate?: Date;
+  endDate?: Date;
   repId?: string;
   tier?: string;
 }
 
-// Extend Express Request type to carry parsed filters
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
-      parsedFilters: DashboardFilters;
+      parsedFilters: ParsedFilters;
     }
   }
 }
 
-const VALID_DATE_RANGES: DateRange[] = ['MTD', 'YTD', 'CUSTOM'];
-const VALID_TIERS = ['Enterprise', 'Mid-Market', 'SMB'];
+const VALID_DATE_RANGES = new Set<string>(['MTD', 'YTD', 'CUSTOM']);
+const VALID_TIERS = new Set<string>(['Enterprise', 'Mid-Market', 'SMB']);
+
+function isValidDateRange(value: string): value is ParsedFilters['dateRange'] {
+  return VALID_DATE_RANGES.has(value);
+}
 
 /**
  * parseFilters middleware
  *
- * Extracts and validates dashboard filter query parameters from req.query,
- * then attaches the parsed DashboardFilters object to req.parsedFilters.
+ * Extracts and validates standard dashboard filter query params from every
+ * request. Attaches a typed `req.parsedFilters` object for use in route
+ * handlers and service calls.
  *
- * Validated params:
- *   dateRange  — must be 'MTD' | 'YTD' | 'CUSTOM'  (default: 'MTD')
- *   startDate  — ISO date string, required when dateRange='CUSTOM'
- *   endDate    — ISO date string, required when dateRange='CUSTOM'
- *   repId      — free-form string ID
- *   tier       — must be 'Enterprise' | 'Mid-Market' | 'SMB'
+ * Query params accepted:
+ *   dateRange   'MTD' | 'YTD' | 'CUSTOM'   — defaults to 'MTD'
+ *   startDate   ISO date string             — required when dateRange='CUSTOM'
+ *   endDate     ISO date string             — required when dateRange='CUSTOM'
+ *   repId       string                      — sales rep ID
+ *   tier        'Enterprise'|'Mid-Market'|'SMB'
  *
- * Returns 400 if:
- *   - dateRange is present but not in the valid enum
- *   - dateRange='CUSTOM' but startDate or endDate is missing / invalid
- *   - tier is present but not in the valid enum
+ * Responds 400 if:
+ *   - dateRange value is not one of the valid enum values
+ *   - dateRange='CUSTOM' but startDate/endDate are missing or invalid
+ *   - tier value is not one of the valid enum values
  */
-export function parseFilters(req: Request, res: Response, next: NextFunction): void {
-  const { dateRange, startDate, endDate, repId, tier } = req.query as Record<string, string | undefined>;
+export function parseFilters(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const { dateRange, startDate, endDate, repId, tier } = req.query;
 
-  // ── Validate dateRange ──────────────────────────────────────────────────────
-  const parsedDateRange: DateRange = (dateRange as DateRange) ?? 'MTD';
-
-  if (!VALID_DATE_RANGES.includes(parsedDateRange)) {
+  // --- dateRange validation ---
+  const rawDateRange = typeof dateRange === 'string' ? dateRange : 'MTD';
+  if (!isValidDateRange(rawDateRange)) {
     res.status(400).json({
       success: false,
-      error: `Invalid dateRange "${dateRange}". Must be one of: ${VALID_DATE_RANGES.join(', ')}`,
+      error: `Invalid dateRange "${rawDateRange}". Must be one of: MTD, YTD, CUSTOM.`,
     });
     return;
   }
 
-  // ── Validate custom date range ────────────────────────────────────────────────
-  if (parsedDateRange === 'CUSTOM') {
-    if (!startDate || !endDate) {
+  // --- Custom date range validation ---
+  let parsedStart: Date | undefined;
+  let parsedEnd: Date | undefined;
+
+  if (rawDateRange === 'CUSTOM') {
+    if (typeof startDate !== 'string' || typeof endDate !== 'string') {
       res.status(400).json({
         success: false,
-        error: 'startDate and endDate are required when dateRange is CUSTOM',
+        error: 'startDate and endDate are required when dateRange is CUSTOM.',
       });
       return;
     }
 
-    const start = new Date(startDate);
-    const end   = new Date(endDate);
+    parsedStart = new Date(startDate);
+    parsedEnd = new Date(endDate);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      res.status(400).json({
-        success: false,
-        error: 'startDate and endDate must be valid ISO date strings',
-      });
+    if (isNaN(parsedStart.getTime())) {
+      res.status(400).json({ success: false, error: `Invalid startDate: "${startDate}"` });
       return;
     }
-
-    if (start > end) {
-      res.status(400).json({
-        success: false,
-        error: 'startDate must be before or equal to endDate',
-      });
+    if (isNaN(parsedEnd.getTime())) {
+      res.status(400).json({ success: false, error: `Invalid endDate: "${endDate}"` });
+      return;
+    }
+    if (parsedStart > parsedEnd) {
+      res.status(400).json({ success: false, error: 'startDate must be before endDate.' });
       return;
     }
   }
 
-  // ── Validate tier ─────────────────────────────────────────────────────────────
-  if (tier && !VALID_TIERS.includes(tier)) {
+  // --- Tier validation ---
+  const rawTier = typeof tier === 'string' ? tier : undefined;
+  if (rawTier && !VALID_TIERS.has(rawTier)) {
     res.status(400).json({
       success: false,
-      error: `Invalid tier "${tier}". Must be one of: ${VALID_TIERS.join(', ')}`,
+      error: `Invalid tier "${rawTier}". Must be one of: Enterprise, Mid-Market, SMB.`,
     });
     return;
   }
 
-  // ── Attach to request ─────────────────────────────────────────────────────────
+  // --- Attach parsed filters to request ---
   req.parsedFilters = {
-    dateRange: parsedDateRange,
-    startDate: parsedDateRange === 'CUSTOM' ? startDate : undefined,
-    endDate:   parsedDateRange === 'CUSTOM' ? endDate   : undefined,
-    repId:     repId || undefined,
-    tier:      tier  || undefined,
+    dateRange: rawDateRange,
+    startDate: parsedStart,
+    endDate: parsedEnd,
+    repId: typeof repId === 'string' && repId ? repId : undefined,
+    tier: rawTier,
   };
 
   next();

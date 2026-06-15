@@ -1,12 +1,16 @@
 /**
  * revenueService.ts
  *
- * Revenue-related business logic and data access layer.
+ * Handles all revenue-related database queries. Once Prisma is wired up,
+ * these functions will query the FinancialActual table (and join to Account,
+ * Target, and User) to compute the KPIs and trends shown on the dashboard.
  *
- * When Prisma is connected, these functions will execute real SQL aggregations
- * against the PostgreSQL database via the @noram/db PrismaClient singleton.
+ * Query strategy:
+ * - MTD:    reportingMonth = current month's first day
+ * - YTD:    reportingMonth >= first day of current year
+ * - CUSTOM: reportingMonth >= startDate AND reportingMonth <= endDate
  *
- * Current state: returns typed mock data for development / scaffolding.
+ * All monetary values are returned as JavaScript numbers (converted from Prisma Decimal).
  */
 
 import type { DashboardFilters } from '../middleware/filters';
@@ -24,7 +28,7 @@ export interface KPISummary {
   vampRatio: number;
 }
 
-export interface FinancialTrendPoint {
+export interface TrendDataPoint {
   month: string;
   actual: number;
   target: number;
@@ -34,96 +38,85 @@ export interface FinancialTrendPoint {
 /**
  * getKPISummary
  *
- * TODO: Replace mock with Prisma queries:
+ * Real implementation would run:
  *
- *   const [actuals, targets] = await Promise.all([
- *     prisma.financialActual.aggregate({
- *       _sum: { netRevenue: true, tpvAmount: true },
- *       where: {
- *         reportingMonth: buildDateFilter(filters),
- *         account: {
- *           salesRepId: filters.repId ?? undefined,
- *           tier:       filters.tier  ?? undefined,
- *         },
- *       },
- *     }),
- *     prisma.target.findMany({ where: { period: currentPeriod } }),
- *   ]);
+ *   const financials = await prisma.financialActual.aggregate({
+ *     _sum: { netRevenue: true, tpvAmount: true, totalFees: true },
+ *     where: buildDateWhereClause(filters),
+ *   });
+ *
+ *   const target = await prisma.target.findFirst({
+ *     where: { period: currentPeriod, type: 'BACKBOOK_MANAGED' },
+ *   });
  *
  *   const goLives = await prisma.account.count({
- *     where: { goLiveDate: buildDateFilter(filters) },
- *   });
- *
- *   const vampSummary = await prisma.vampRecord.aggregate({
- *     _sum:  { fraudEvents: true, totalCapturedEvents: true },
- *     where: { reportingMonth: buildDateFilter(filters) },
+ *     where: {
+ *       goLiveDate: { gte: periodStart, lte: periodEnd },
+ *       ...(filters.repId ? { salesRepId: filters.repId } : {}),
+ *     },
  *   });
  */
-export async function getKPISummary(filters: DashboardFilters): Promise<KPISummary> {
-  // Mock data — replace with Prisma aggregation
-  void filters; // suppress unused warning until wired up
-
-  const netRevenue       = 875_420;
-  const netRevenueTarget = 950_000;
-  const variance         = netRevenue - netRevenueTarget;
-
+export async function getKPISummary(_filters: DashboardFilters): Promise<KPISummary> {
+  // TODO: replace with real Prisma aggregation queries (see JSDoc above)
   return {
-    netRevenue,
-    netRevenueTarget,
-    netRevenueVariance:    variance,
-    netRevenueVariancePct: variance / netRevenueTarget,
-    frontbookMNR:    112_350,
-    frontbookTarget: 120_000,
-    backbookRevenue: 763_070,
-    tpvAmount:       14_200_000,
-    goLiveCount:     7,
-    vampRatio:       0.0031,
+    netRevenue:           1_063_600,
+    netRevenueTarget:     1_050_000,
+    netRevenueVariance:      13_600,
+    netRevenueVariancePct:    0.013,
+    frontbookMNR:           162_500,
+    frontbookTarget:        150_000,
+    backbookRevenue:        826_900,
+    tpvAmount:        4_820_000_000,
+    goLiveCount:                  4,
+    vampRatio:               0.0072,
   };
 }
 
 /**
  * getFinancialTrends
  *
- * TODO: Replace mock with Prisma aggregation:
+ * Real implementation would run one query per month in the requested range
+ * (or a single query grouped by reportingMonth):
  *
- *   const rows = await prisma.financialActual.groupBy({
- *     by:     ['reportingMonth'],
- *     _sum:   { netRevenue: true, tpvAmount: true },
- *     where:  { /* date range filter * / },
+ *   const results = await prisma.financialActual.groupBy({
+ *     by: ['reportingMonth'],
+ *     _sum: { netRevenue: true, tpvAmount: true },
+ *     where: buildDateWhereClause(filters),
  *     orderBy: { reportingMonth: 'asc' },
  *   });
  *
- *   // Join with Target to get the target for each month
- *   const targets = await prisma.target.findMany({
- *     where: { type: { in: ['BACKBOOK_MANAGED', 'BACKBOOK_UNMANAGED'] } },
- *   });
+ *   Then join with Target records to get the target per month.
  */
-export async function getFinancialTrends(filters: DashboardFilters): Promise<FinancialTrendPoint[]> {
-  void filters;
-
-  const months = [
-    'Jan 2025', 'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025',
+export async function getFinancialTrends(_filters: DashboardFilters): Promise<TrendDataPoint[]> {
+  // TODO: replace with real Prisma groupBy query (see JSDoc above)
+  return [
+    { month: 'Jan 2025', actual:  890_000, target:  920_000, tpv: 3_900_000_000 },
+    { month: 'Feb 2025', actual:  935_000, target:  940_000, tpv: 4_100_000_000 },
+    { month: 'Mar 2025', actual:  978_000, target:  960_000, tpv: 4_300_000_000 },
+    { month: 'Apr 2025', actual: 1_010_000, target: 1_000_000, tpv: 4_550_000_000 },
+    { month: 'May 2025', actual: 1_042_000, target: 1_030_000, tpv: 4_750_000_000 },
+    { month: 'Jun 2025', actual: 1_063_600, target: 1_050_000, tpv: 4_820_000_000 },
   ];
-
-  return months.map((month, i) => ({
-    month,
-    actual: 700_000 + i * 30_000 + Math.floor(Math.random() * 40_000),
-    target: 800_000 + i * 25_000,
-    tpv:    10_000_000 + i * 500_000 + Math.floor(Math.random() * 1_000_000),
-  }));
 }
 
 /**
  * getNetRevenue
  *
- * Returns a single net revenue figure for the given filters.
+ * A focused helper for computing net revenue for a given set of filters.
+ * Used internally and by other services that need a revenue figure for attribution.
  *
- * TODO: prisma.financialActual.aggregate({
- *   _sum: { netRevenue: true },
- *   where: buildWhereClause(filters),
- * })
+ * Real implementation:
+ *   const result = await prisma.financialActual.aggregate({
+ *     _sum: { netRevenue: true },
+ *     where: {
+ *       ...buildDateWhereClause(filters),
+ *       ...(filters.repId ? { account: { salesRepId: filters.repId } } : {}),
+ *       ...(filters.tier ? { account: { tier: filters.tier } } : {}),
+ *     },
+ *   });
+ *   return Number(result._sum.netRevenue ?? 0);
  */
-export async function getNetRevenue(filters: DashboardFilters): Promise<number> {
-  void filters;
-  return 875_420;
+export async function getNetRevenue(_filters: DashboardFilters): Promise<number> {
+  // TODO: replace with real Prisma query
+  return 1_063_600;
 }

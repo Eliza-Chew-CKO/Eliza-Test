@@ -1,62 +1,122 @@
-// Maps "Excessive VAMP" sheet → VampRecord rows
-// Expected columns: Alias, Owner, Domain, Acquire, Created Events, Fraud Events,
-//                   Total Captured Events, VAMP Ratio, VAMP Assessment
+/**
+ * mapVAMP.ts
+ *
+ * Maps rows from the "Excessive VAMP" Excel sheet to Prisma VampRecordCreateInput objects.
+ *
+ * VAMP = Visa Acquirer Monitoring Programme
+ *
+ * Expected sheet columns:
+ *   - Account Alias       : Links to Account.alias
+ *   - Reporting Month     : Month of the VAMP assessment
+ *   - Created Events      : Total created transaction events
+ *   - Fraud Events        : Transactions flagged as fraudulent
+ *   - Total Captured Events : Total successfully captured events
+ *   - VAMP Ratio          : Pre-calculated ratio (or computed if missing)
+ *   - VAMP Type           : "Standard" | "CNP" (Card Not Present)
+ *   - VAMP Assessment     : "Acceptable" | "Elevated" | "Excessive"
+ *   - Acquirer Country    : ISO 2-letter country code of the acquirer
+ *   - Acquirer ID         : Unique acquirer identifier
+ *
+ * VAMP Ratio calculation (if column is absent or zero):
+ *   vampRatio = fraudEvents / totalCapturedEvents
+ *
+ * Assessment classification (if column is absent):
+ *   < 0.005  → "Acceptable"
+ *   0.005–0.009 → "Elevated"
+ *   >= 0.010 → "Excessive"
+ */
 
-import { prisma } from '../../packages/db/src';
-
-interface VampRow {
-  Alias: string;
-  Owner: string;
-  Domain: string;
-  Acquire: string;
-  'Created Events': number;
-  'Fraud Events': number;
-  'Total Captured Events': number;
-  'VAMP Ratio': number;
-  'VAMP Assessment': number;
-  'Reporting Month': string; // "YYYY-MM"
+import type { Prisma } from '@prisma/client';
+/**
+ * parseExcelDate — converts Excel serial numbers, ISO strings, and Date objects to Date.
+ * Excel serial numbers count days from 1900-01-01 with the Lotus 1-2-3 leap year bug
+ * (1900 is treated as a leap year, so serials > 60 are shifted by 2 days).
+ */
+function parseExcelDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') {
+    const excelEpoch = new Date(1900, 0, 1);
+    const days = value > 60 ? value - 2 : value - 1;
+    return new Date(excelEpoch.getTime() + days * 86_400_000);
+  }
+  const d = new Date(value as string);
+  return isNaN(d.getTime()) ? null : d;
 }
 
-export async function mapVAMP(rows: VampRow[]) {
+// Column constants
+const COL_ALIAS = 'Account Alias';
+const COL_MONTH = 'Reporting Month';
+const COL_CREATED = 'Created Events';
+const COL_FRAUD = 'Fraud Events';
+const COL_CAPTURED = 'Total Captured Events';
+const COL_RATIO = 'VAMP Ratio';
+const COL_TYPE = 'VAMP Type';
+const COL_ASSESSMENT = 'VAMP Assessment';
+const COL_COUNTRY = 'Acquirer Country';
+const COL_ACQUIRER = 'Acquirer ID';
+
+/**
+ * classifyAssessment
+ * Assigns a VAMP assessment label based on the ratio thresholds.
+ */
+function classifyAssessment(ratio: number): string {
+  if (ratio >= 0.01) return 'Excessive';
+  if (ratio >= 0.005) return 'Elevated';
+  return 'Acceptable';
+}
+
+/**
+ * mapVAMP
+ *
+ * @param rows  Raw row objects from the "Excessive VAMP" sheet
+ * @returns     Array of Prisma.VampRecordCreateInput objects
+ */
+export function mapVAMP(rows: Record<string, any>[]): Prisma.VampRecordCreateInput[] {
+  const results: Prisma.VampRecordCreateInput[] = [];
+
   for (const row of rows) {
-    const account = await prisma.account.findUnique({ where: { alias: row.Alias } });
-    if (!account) {
-      console.warn(`Account not found for alias: ${row.Alias}`);
+    const alias = (row[COL_ALIAS] as string | null)?.trim();
+    const monthRaw = row[COL_MONTH];
+
+    if (!alias || !monthRaw) {
       continue;
     }
 
-    const reportingMonth = new Date(`${row['Reporting Month']}-01`);
-    const vampRatio = row['VAMP Ratio'];
-    // VAMP Type: Excessive if ratio > 0.015 AND fraud events > 1500
-    const vampType = vampRatio > 0.015 && row['Fraud Events'] > 1500 ? 'EXCESSIVE' : 'NORMAL';
-    // VAMP Assessment: (createdEvents + fraudEvents) * 8 if Excessive
-    const vampAssessment = vampType === 'EXCESSIVE'
-      ? (row['Created Events'] + row['Fraud Events']) * 8
-      : null;
+    const reportingMonth = parseExcelDate(monthRaw);
+    if (!reportingMonth) {
+      console.warn(`[mapVAMP] Could not parse month "${monthRaw}" for account "${alias}"`);
+      continue;
+    }
+    reportingMonth.setDate(1);
+    reportingMonth.setHours(0, 0, 0, 0);
 
-    await prisma.vampRecord.upsert({
-      where: { accountId_reportingMonth: { accountId: account.id, reportingMonth } },
-      create: {
-        accountId: account.id,
-        reportingMonth,
-        createdEvents: row['Created Events'],
-        fraudEvents: row['Fraud Events'],
-        totalCapturedEvents: row['Total Captured Events'],
-        vampRatio,
-        vampType: vampType as any,
-        vampAssessment,
-        acquirerId: row.Acquire,
-      },
-      update: {
-        createdEvents: row['Created Events'],
-        fraudEvents: row['Fraud Events'],
-        totalCapturedEvents: row['Total Captured Events'],
-        vampRatio,
-        vampType: vampType as any,
-        vampAssessment,
-      },
+    const createdEvents = typeof row[COL_CREATED] === 'number' ? Math.round(row[COL_CREATED]) : 0;
+    const fraudEvents = typeof row[COL_FRAUD] === 'number' ? Math.round(row[COL_FRAUD]) : 0;
+    const totalCapturedEvents = typeof row[COL_CAPTURED] === 'number' ? Math.round(row[COL_CAPTURED]) : createdEvents;
+
+    // Compute VAMP ratio if not provided
+    let vampRatio = typeof row[COL_RATIO] === 'number' ? row[COL_RATIO] : 0;
+    if (vampRatio === 0 && totalCapturedEvents > 0) {
+      vampRatio = fraudEvents / totalCapturedEvents;
+    }
+
+    const vampAssessment =
+      (row[COL_ASSESSMENT] as string | null)?.trim() || classifyAssessment(vampRatio);
+
+    results.push({
+      account: { connect: { alias } },
+      reportingMonth,
+      createdEvents,
+      fraudEvents,
+      totalCapturedEvents,
+      vampRatio: Math.round(vampRatio * 1_000_000) / 1_000_000, // 6 decimal places
+      vampType: (row[COL_TYPE] as string | null)?.trim() ?? 'Standard',
+      vampAssessment,
+      acquirerCountry: (row[COL_COUNTRY] as string | null)?.trim() ?? null,
+      acquirerId: (row[COL_ACQUIRER] as string | null)?.trim() ?? null,
     });
   }
 
-  console.log(`Processed ${rows.length} VAMP records.`);
+  return results;
 }

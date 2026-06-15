@@ -1,39 +1,32 @@
-/**
- * packages/db/src/index.ts
- *
- * Exports a singleton PrismaClient instance that is safe to use in:
- *   - Next.js (hot reload creates multiple module instances in dev)
- *   - Express API (single long-lived process)
- *
- * The global pattern ensures that the Prisma Client is reused across
- * hot reloads in development, preventing "too many connections" errors.
- */
-
 import { PrismaClient } from '@prisma/client';
 
-// Extend the Node.js global type to hold the Prisma singleton
-declare global {
-  // eslint-disable-next-line no-var
-  var __prisma: PrismaClient | undefined;
-}
+/**
+ * PrismaClient Singleton
+ *
+ * Next.js hot reloading in development creates new module instances on each
+ * refresh, which would exhaust the PostgreSQL connection pool if we created
+ * a new PrismaClient each time. The global pattern below prevents that by
+ * storing the client on globalThis between hot reloads.
+ *
+ * In production, Node.js caches modules normally, so this is a no-op.
+ */
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
 
-function createPrismaClient(): PrismaClient {
-  return new PrismaClient({
+export const prisma: PrismaClient =
+  globalForPrisma.prisma ??
+  new PrismaClient({
     log:
       process.env.NODE_ENV === 'development'
         ? ['query', 'error', 'warn']
         : ['error'],
   });
-}
-
-export const prisma: PrismaClient =
-  global.__prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
-  global.__prisma = prisma;
+  globalForPrisma.prisma = prisma;
 }
 
-// Re-export all generated Prisma types so consumers can import from @noram/db
+// Re-export all Prisma types so consumers can import from @noram/db
+// instead of needing to depend directly on @prisma/client.
 export * from '@prisma/client';
-
-export default prisma;

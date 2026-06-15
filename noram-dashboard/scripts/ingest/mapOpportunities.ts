@@ -20,7 +20,22 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { parseExcelDate } from './dateUtils';
+/**
+ * parseExcelDate — converts Excel serial numbers, ISO strings, and Date objects to Date.
+ * Excel serial numbers count days from 1900-01-01 with the Lotus 1-2-3 leap year bug
+ * (1900 is treated as a leap year, so serials > 60 are shifted by 2 days).
+ */
+function parseExcelDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'number') {
+    const excelEpoch = new Date(1900, 0, 1);
+    const days = value > 60 ? value - 2 : value - 1;
+    return new Date(excelEpoch.getTime() + days * 86_400_000);
+  }
+  const d = new Date(value as string);
+  return isNaN(d.getTime()) ? null : d;
+}
 
 // Stage probability map for computing weighted MNR if not provided
 const STAGE_WIN_PROBABILITY: Record<string, number> = {

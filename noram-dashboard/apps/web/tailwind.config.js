@@ -1,22 +1,25 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
-  content: ['./src/**/*.{ts,tsx}'],
+  content: [
+    './src/**/*.{ts,tsx}',
+  ],
   theme: {
     extend: {
       colors: {
-        // Primary — checkout.com-inspired blue palette
+        // Primary palette — checkout.com blue-ish
         primary: {
-          50:  '#e6f0ff',
-          100: '#cce0ff',
-          200: '#99c2ff',
-          300: '#66a3ff',
-          400: '#3385ff',
-          500: '#0070f3', // brand blue
-          600: '#005acc',
-          700: '#0044a6',
-          800: '#002d80',
-          900: '#001759',
+          50:  '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#0070f3', // checkout.com primary blue
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+          950: '#172554',
         },
         // Neutral grays
         neutral: {
@@ -30,33 +33,39 @@ module.exports = {
           700: '#374151',
           800: '#1f2937',
           900: '#111827',
+          950: '#030712',
         },
-        // Semantic states
+        // Semantic colours for variance / status indicators
         success: {
-          50:  '#ecfdf5',
-          500: '#10b981',
-          700: '#047857',
+          50:  '#f0fdf4',
+          100: '#dcfce7',
+          400: '#4ade80',
+          500: '#22c55e',
+          600: '#16a34a',
+          700: '#15803d',
         },
         warning: {
           50:  '#fffbeb',
+          100: '#fef3c7',
+          400: '#fbbf24',
           500: '#f59e0b',
+          600: '#d97706',
           700: '#b45309',
         },
         danger: {
-          50:  '#fef2f2',
-          500: '#ef4444',
-          700: '#b91c1c',
+          50:  '#fff1f2',
+          100: '#ffe4e6',
+          400: '#fb7185',
+          500: '#f43f5e',
+          600: '#e11d48',
+          700: '#be123c',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-      },
-      borderRadius: {
-        card: '0.75rem',
+        sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        card: '0 1px 3px 0 rgba(0,0,0,0.08), 0 1px 2px -1px rgba(0,0,0,0.06)',
-        'card-hover': '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.06)',
+        card: '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)',
       },
     },
   },
