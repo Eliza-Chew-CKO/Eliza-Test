@@ -1,38 +1,50 @@
 /**
- * VAMP Service
+ * vampService.ts
  *
- * VAMP = Visa Acquirer Monitoring Programme (or equivalent scheme-level
- * fraud monitoring programme, e.g. Mastercard MATCH).
+ * Handles VAMP (Visa Acquirer Monitoring Programme) record queries and ratio calculations.
  *
- * A VampRecord captures fraud event counts vs total captured events for a
- * given account + acquirer + reporting month. The VAMP ratio is:
- *
+ * VAMP Ratio definition:
  *   vampRatio = fraudEvents / totalCapturedEvents
  *
- * Thresholds (indicative — confirm with compliance team):
- *   < 0.005  → HEALTHY  (green)
- *   0.005 – 0.009 → AT_RISK (amber)
- *   >= 0.01  → EXCESSIVE (red) — triggers acquirer notification
+ * Threshold logic (indicative thresholds — confirm with compliance team):
+ *   < 0.005  (0.5%)  → NORMAL   — within acceptable range
+ *   0.005–0.009      → ELEVATED — requires monitoring
+ *   > 0.009  (0.9%)  → EXCESSIVE — triggers acquirer reporting obligations
  *
- * The "vampAssessment" field on the record captures the classification at
- * ingestion time based on acquirer-specific rules in the source spreadsheet.
+ * Key Prisma queries:
+ *
+ * getVampRecords:
+ *   prisma.vampRecord.findMany({
+ *     where: {
+ *       reportingMonth: periodStart,
+ *       ...(filters.acquirerId ? { acquirerId: filters.acquirerId } : {}),
+ *       ...(filters.accountId ? { accountId: filters.accountId } : {}),
+ *     },
+ *     include: {
+ *       account: { select: { alias: true, tier: true, salesRepId: true } },
+ *     },
+ *     orderBy: { vampRatio: 'desc' },
+ *   });
+ *
+ * getVampSummary:
+ *   prisma.vampRecord.aggregate({
+ *     _avg: { vampRatio: true },
+ *     _count: { id: true },
+ *     where: { reportingMonth: periodStart },
+ *   });
+ *   Plus a groupBy acquirerId breakdown.
  */
 
-// TODO: import { prisma } from '@noram/db';
-
 export interface VampFilters {
-  accountId?: string;
+  reportingMonth?: string;
   acquirerId?: string;
-  acquirerCountry?: string;
-  reportingMonth?: string; // "YYYY-MM"
-  dateRange?: 'MTD' | 'YTD' | 'CUSTOM';
-  startDate?: string;
-  endDate?: string;
+  accountId?: string;
 }
 
-export interface VampRecordResult {
+export interface VampRecord {
   id: string;
   accountId: string;
+  accountAlias: string;
   reportingMonth: string;
   createdEvents: number;
   fraudEvents: number;
@@ -45,58 +57,76 @@ export interface VampRecordResult {
   createdAt: string;
 }
 
-/**
- * getVampRecords
- *
- * Intended Prisma query:
- *   prisma.vampRecord.findMany({
- *     where: {
- *       ...(filters.accountId       ? { accountId: filters.accountId }         : {}),
- *       ...(filters.acquirerId      ? { acquirerId: filters.acquirerId }        : {}),
- *       ...(filters.acquirerCountry ? { acquirerCountry: filters.acquirerCountry } : {}),
- *       reportingMonth: { gte: periodStart, lte: periodEnd },
- *     },
- *     include: { account: true },
- *     orderBy: { vampRatio: 'desc' },
- *   })
- */
-export async function getVampRecords(
-  _filters: VampFilters
-): Promise<VampRecordResult[]> {
-  // TODO: replace with Prisma query
-  return [];
-}
-
 export interface VampSummary {
-  totalRecords: number;
-  healthy: number;
-  atRisk: number;
-  excessive: number;
   averageVampRatio: number;
-  highestVampRatio: number;
-  accountsWithExcessive: string[]; // account IDs
+  excessiveCount: number;
+  elevatedCount: number;
+  normalCount: number;
+  acquirerBreakdown: { acquirerId: string; averageVampRatio: number; count: number }[];
 }
 
 /**
- * getVampSummary
- *
- * Aggregates VAMP records across all accounts for a reporting period.
- *
- * Intended Prisma query (raw or computed in application layer):
- *   1. Fetch all VampRecord rows for the period.
- *   2. Classify each row: vampRatio < 0.005 → healthy, 0.005–0.01 → atRisk, >= 0.01 → excessive.
- *   3. Compute averageVampRatio = AVG(vampRatio).
- *   4. Return counts and list of accountIds with excessive classification.
+ * Classifies a VAMP ratio into a tier string.
+ */
+export function classifyVampRatio(ratio: number): 'NORMAL' | 'ELEVATED' | 'EXCESSIVE' {
+  if (ratio > 0.009) return 'EXCESSIVE';
+  if (ratio > 0.005) return 'ELEVATED';
+  return 'NORMAL';
+}
+
+/**
+ * Returns VAMP records for the specified filters.
+ */
+export async function getVampRecords(_filters: VampFilters): Promise<VampRecord[]> {
+  // TODO: replace with real Prisma findMany (see JSDoc above)
+  return [
+    {
+      id: 'vamp_001',
+      accountId: 'acc_002',
+      accountAlias: 'QuickShop',
+      reportingMonth: '2025-06-01T00:00:00Z',
+      createdEvents: 85_000,
+      fraudEvents: 952,
+      totalCapturedEvents: 85_000,
+      vampRatio: 0.0112,
+      vampType: 'DOMESTIC',
+      vampAssessment: 'Under review',
+      acquirerCountry: 'US',
+      acquirerId: 'ACQ_VISA_US',
+      createdAt: '2025-06-10T00:00:00Z',
+    },
+    {
+      id: 'vamp_002',
+      accountId: 'acc_001',
+      accountAlias: 'ACME Payments',
+      reportingMonth: '2025-06-01T00:00:00Z',
+      createdEvents: 420_000,
+      fraudEvents: 1_890,
+      totalCapturedEvents: 420_000,
+      vampRatio: 0.0045,
+      vampType: 'INTERNATIONAL',
+      vampAssessment: null,
+      acquirerCountry: 'US',
+      acquirerId: 'ACQ_VISA_US',
+      createdAt: '2025-06-10T00:00:00Z',
+    },
+  ];
+}
+
+/**
+ * Returns an aggregate VAMP summary including averages and acquirer breakdown.
  */
 export async function getVampSummary(): Promise<VampSummary> {
-  // TODO: replace with Prisma aggregate
+  // TODO: replace with real Prisma aggregate + groupBy queries (see JSDoc above)
   return {
-    totalRecords: 45,
-    healthy: 38,
-    atRisk: 5,
-    excessive: 2,
-    averageVampRatio: 0.00289,
-    highestVampRatio: 0.01450,
-    accountsWithExcessive: ['acc_7', 'acc_14'],
+    averageVampRatio: 0.0072,
+    excessiveCount: 3,
+    elevatedCount: 7,
+    normalCount: 42,
+    acquirerBreakdown: [
+      { acquirerId: 'ACQ_VISA_US', averageVampRatio: 0.0068, count: 28 },
+      { acquirerId: 'ACQ_MC_US',   averageVampRatio: 0.0081, count: 14 },
+      { acquirerId: 'ACQ_VISA_CA', averageVampRatio: 0.0059, count: 10 },
+    ],
   };
 }

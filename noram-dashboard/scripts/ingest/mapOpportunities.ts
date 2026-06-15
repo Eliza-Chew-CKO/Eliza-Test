@@ -1,140 +1,163 @@
 /**
  * mapOpportunities.ts
  *
- * Maps rows from the "Salesforce Opportunity Snapshot" Excel sheet to
+ * Maps rows from the "Salesforce Opportunity Snapshot" sheet to
  * Prisma OpportunityCreateInput objects.
  *
  * Expected sheet columns:
- *   - Opportunity ID         : Salesforce opportunity ID (used as stable external ID)
- *   - Account Name           : Matched to Account.alias for connect
- *   - Owner Email            : Sales rep email — connected to User
- *   - Stage                  : Salesforce stage name (normalised to canonical values)
- *   - Type                   : "New Business" / "Existing Business" (mapped to type enum)
- *   - Base MNR               : Numeric monthly revenue (base)
- *   - Roll MNR / ARR         : Numeric monthly revenue (roll-on)
- *   - Weighted MNR           : Pre-calculated weighted value (or computed from stage)
- *   - Close Date             : Expected close date
- *   - Go Live Date           : Expected go-live date
- *   - Rating                 : "Hot" | "Warm" | "Cold" (or Salesforce forecast category)
- *   - Second Owner Email     : Optional co-owner email
+ *   Opportunity ID      — Salesforce opportunity ID
+ *   Account ID / Name   — linked account alias or ID
+ *   Owner (AE)          — primary sales rep name or ID
+ *   Stage               — pipeline stage (raw Salesforce stage name)
+ *   Type                — "New Logo" | "Expansion" | "Renewal" | etc.
+ *   Base MNR            — base monthly new revenue (numeric)
+ *   Roll MNR            — roll monthly new revenue (numeric)
+ *   Close Date          — expected close date
+ *   Go-Live Date        — expected go-live date (optional)
+ *   Rating              — deal rating "A" | "B" | "C"
+ *   Second Owner        — secondary rep ID (optional)
  */
 
-import type { Prisma } from '@prisma/client';
-/**
- * parseExcelDate — converts Excel serial numbers, ISO strings, and Date objects to Date.
- * Excel serial numbers count days from 1900-01-01 with the Lotus 1-2-3 leap year bug
- * (1900 is treated as a leap year, so serials > 60 are shifted by 2 days).
- */
-function parseExcelDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === 'number') {
-    const excelEpoch = new Date(1900, 0, 1);
-    const days = value > 60 ? value - 2 : value - 1;
-    return new Date(excelEpoch.getTime() + days * 86_400_000);
+export interface OpportunityCreateInput {
+  id?: string;
+  accountId: string;
+  salesRepId: string;
+  stage: string;
+  type: string;
+  baseMonthlyRevenue: number;
+  rollMonthlyRevenue: number;
+  weightedExpectedMNR: number;
+  closeDate: Date;
+  goLiveDate?: Date | null;
+  rating?: string | null;
+  secondOwnerId?: string | null;
+  stageHistory: Array<{ stage: string; enteredAt: string }>;
+}
+
+// ─── Stage normalisation ──────────────────────────────────────────────────────
+
+// Maps raw Salesforce stage names to our internal stage taxonomy
+const STAGE_MAP: Record<string, string> = {
+  'discovery':              'Discovery',
+  'scoping':                'Scoping',
+  'solution scoping':       'Scoping',
+  'proposal':               'Proposal',
+  'value proposition':      'Proposal',
+  'negotiation':            'Negotiation',
+  'negotiation/review':     'Negotiation',
+  'closed won':             'Closed Won',
+  'closed lost':            'Closed Lost',
+  'id. decision makers':    'Discovery',
+  'perception analysis':    'Scoping',
+};
+
+function normaliseStage(raw: string): string {
+  return STAGE_MAP[raw.toLowerCase().trim()] ?? raw.trim();
+}
+
+// ─── Type detection ────────────────────────────────────────────────────────────
+
+function normaliseType(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  if (lower.includes('new logo') || lower.includes('new business')) return 'New Logo';
+  if (lower.includes('expansion') || lower.includes('upsell'))      return 'Expansion';
+  if (lower.includes('renewal'))                                      return 'Renewal';
+  return raw.trim() || 'New Logo';
+}
+
+// ─── Stage weights for weighted MNR ───────────────────────────────────────────
+
+const STAGE_WEIGHTS: Record<string, number> = {
+  Discovery:    0.10,
+  Scoping:      0.25,
+  Proposal:     0.50,
+  Negotiation:  0.75,
+  'Closed Won': 1.00,
+  'Closed Lost': 0.00,
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function get(row: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const val = row[key] ??
+      Object.entries(row).find(([k]) => k.trim().toLowerCase() === key.toLowerCase())?.[1];
+    if (val != null) return String(val).trim();
   }
-  const d = new Date(value as string);
+  return '';
+}
+
+function parseNum(raw: unknown): number {
+  if (raw == null) return 0;
+  const n = parseFloat(String(raw).replace(/[,$]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function parseDate(raw: unknown): Date | null {
+  if (!raw) return null;
+  const d = new Date(String(raw).trim());
   return isNaN(d.getTime()) ? null : d;
 }
 
-// Stage probability map for computing weighted MNR if not provided
-const STAGE_WIN_PROBABILITY: Record<string, number> = {
-  Discovery: 0.1,
-  Scoping: 0.25,
-  Proposal: 0.4,
-  Negotiation: 0.75,
-  'Closed Won': 1.0,
-  'Closed Lost': 0.0,
-};
-
-// Map Salesforce stage names to canonical dashboard stages
-const STAGE_MAP: Record<string, string> = {
-  'Needs Analysis': 'Discovery',
-  'Qualification': 'Discovery',
-  'Value Proposition': 'Scoping',
-  'Id. Decision Makers': 'Scoping',
-  'Perception Analysis': 'Scoping',
-  'Proposal/Price Quote': 'Proposal',
-  'Negotiation/Review': 'Negotiation',
-  'Closed Won': 'Closed Won',
-  'Closed Lost': 'Closed Lost',
-};
-
-/**
- * normaliseStage
- * Maps Salesforce stage names to canonical stages, defaulting to 'Discovery'.
- */
-function normaliseStage(raw: string | null | undefined): string {
-  if (!raw) return 'Discovery';
-  return STAGE_MAP[raw.trim()] ?? raw.trim();
-}
-
-/**
- * normaliseType
- * Maps Salesforce opportunity types to canonical dashboard types.
- */
-function normaliseType(raw: string | null | undefined): string {
-  if (!raw) return 'New Logo';
-  const lower = raw.toLowerCase();
-  if (lower.includes('existing') || lower.includes('expansion') || lower.includes('upsell')) {
-    return 'Expansion';
-  }
-  if (lower.includes('renewal')) return 'Renewal';
-  return 'New Logo';
-}
-
-/**
- * parseDecimal
- * Safely parses a numeric value from a cell (handles strings with currency symbols).
- */
-function parseDecimal(value: any): number {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const cleaned = value.replace(/[$,£€\s]/g, '');
-    const n = parseFloat(cleaned);
-    return isNaN(n) ? 0 : n;
-  }
-  return 0;
-}
+// ─── Main mapper ──────────────────────────────────────────────────────────────
 
 /**
  * mapOpportunities
  *
- * @param rows  Raw row objects from the "Salesforce Opportunity Snapshot" sheet
- * @returns     Array of Prisma.OpportunityCreateInput objects
+ * Maps raw rows to OpportunityCreateInput.
+ * Rows missing accountId or a valid close date are skipped.
+ * weightedExpectedMNR is calculated from baseMonthlyRevenue × stage weight.
  */
-export function mapOpportunities(rows: Record<string, any>[]): Prisma.OpportunityCreateInput[] {
-  const results: Prisma.OpportunityCreateInput[] = [];
+export function mapOpportunities(
+  rows: Record<string, unknown>[]
+): OpportunityCreateInput[] {
+  const results: OpportunityCreateInput[] = [];
 
   for (const row of rows) {
-    const accountName = (row['Account Name'] as string | null)?.trim();
-    const ownerEmail = (row['Owner Email'] as string | null)?.trim();
-    const closeDateRaw = row['Close Date'];
+    const accountId  = get(row, 'Account ID', 'Account', 'Account Name', 'Account Alias');
+    const salesRepId = get(row, 'Owner', 'Owner (AE)', 'AE', 'Sales Rep', 'Sales Rep ID');
 
-    if (!accountName || !closeDateRaw) {
-      console.warn('[mapOpportunities] Skipping row — missing Account Name or Close Date');
+    if (!accountId) {
+      console.warn('[mapOpportunities] Skipping row with no account ID', row);
       continue;
     }
 
-    const stage = normaliseStage(row['Stage'] as string | null);
-    const base = parseDecimal(row['Base MNR'] ?? row['Monthly Revenue']);
-    const roll = parseDecimal(row['Roll MNR'] ?? row['ARR'] ?? 0);
-    const probability = STAGE_WIN_PROBABILITY[stage] ?? 0.1;
-    const weighted = parseDecimal(row['Weighted MNR']) || (base + roll) * probability;
+    const rawStage     = get(row, 'Stage', 'Pipeline Stage');
+    const stage        = normaliseStage(rawStage);
+    const type         = normaliseType(get(row, 'Type', 'Opportunity Type'));
+    const baseMNR      = parseNum(row['Base MNR'] ?? row['Base Monthly Revenue']);
+    const rollMNR      = parseNum(row['Roll MNR'] ?? row['Roll Monthly Revenue']);
+    const weight       = STAGE_WEIGHTS[stage] ?? 0.5;
+    const weightedMNR  = baseMNR * weight;
+
+    const closeDateRaw = row['Close Date'] ?? row['Expected Close Date'];
+    const closeDate    = parseDate(closeDateRaw);
+    if (!closeDate) {
+      console.warn(`[mapOpportunities] Skipping row with invalid close date: "${closeDateRaw}"`);
+      continue;
+    }
+
+    const goLiveDate = parseDate(row['Go-Live Date'] ?? row['Go Live Date']);
+    const rating     = get(row, 'Rating', 'Deal Rating') || null;
+    const secondOwner = get(row, 'Second Owner', 'Secondary Owner') || null;
+    const oppId      = get(row, 'Opportunity ID', 'Id', 'SF ID') || undefined;
 
     results.push({
-      account: { connect: { alias: accountName } },
-      salesRep: { connect: { email: ownerEmail ?? '' } },
+      id: oppId,
+      accountId,
+      salesRepId: salesRepId || 'UNKNOWN',
       stage,
-      type: normaliseType(row['Type'] as string | null),
-      baseMonthlyRevenue: base,
-      rollMonthlyRevenue: roll,
-      weightedExpectedMNR: Math.round(weighted * 100) / 100,
-      closeDate: parseExcelDate(closeDateRaw) ?? new Date(),
-      goLiveDate: row['Go Live Date'] ? parseExcelDate(row['Go Live Date']) : null,
-      rating: (row['Rating'] as string | null)?.trim() ?? null,
-      secondOwnerId: null, // resolve from secondOwnerEmail after user upserts
-      stageHistory: [],
+      type,
+      baseMonthlyRevenue:  baseMNR,
+      rollMonthlyRevenue:  rollMNR,
+      weightedExpectedMNR: weightedMNR,
+      closeDate,
+      goLiveDate:          goLiveDate ?? null,
+      rating,
+      secondOwnerId:       secondOwner,
+      stageHistory: [
+        { stage, enteredAt: new Date().toISOString() },
+      ],
     });
   }
 

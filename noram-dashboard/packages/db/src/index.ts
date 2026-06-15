@@ -1,32 +1,47 @@
 import { PrismaClient } from '@prisma/client';
 
-/**
- * PrismaClient Singleton
- *
- * Next.js hot reloading in development creates new module instances on each
- * refresh, which would exhaust the PostgreSQL connection pool if we created
- * a new PrismaClient each time. The global pattern below prevents that by
- * storing the client on globalThis between hot reloads.
- *
- * In production, Node.js caches modules normally, so this is a no-op.
- */
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+// ─── Singleton PrismaClient ───────────────────────────────────────────────────
+//
+// Next.js hot-module replacement in development causes `new PrismaClient()` to
+// be called on every module reload, quickly exhausting the database connection
+// pool. We cache the instance on the Node.js global object to prevent that.
+//
+// In production (NODE_ENV === 'production') we always create a fresh instance,
+// as the module is loaded only once.
 
-export const prisma: PrismaClient =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log:
-      process.env.NODE_ENV === 'development'
-        ? ['query', 'error', 'warn']
-        : ['error'],
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+declare global {
+  // eslint-disable-next-line no-var
+  var __prisma: PrismaClient | undefined;
 }
 
-// Re-export all Prisma types so consumers can import from @noram/db
-// instead of needing to depend directly on @prisma/client.
-export * from '@prisma/client';
+function createPrismaClient(): PrismaClient {
+  return new PrismaClient({
+    log:
+      process.env.NODE_ENV === 'development'
+        ? ['query', 'warn', 'error']
+        : ['warn', 'error'],
+  });
+}
+
+export const prisma: PrismaClient =
+  process.env.NODE_ENV === 'production'
+    ? createPrismaClient()
+    : (globalThis.__prisma ??= createPrismaClient());
+
+// ─── Re-export Prisma types for consumers ─────────────────────────────────────
+//
+// Consumers can import from '@noram/db' instead of '@prisma/client' directly.
+// This ensures they always use the version of Prisma that this package manages.
+
+export {
+  Prisma,
+  type User,
+  type Account,
+  type Opportunity,
+  type FinancialActual,
+  type Target,
+  type VampRecord,
+  type TargetType,
+} from '@prisma/client';
+
+export default prisma;

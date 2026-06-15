@@ -1,30 +1,50 @@
 /**
- * Backbook Service
+ * backbookService.ts
  *
- * Handles data access for backbook (existing/live) accounts.
+ * Handles all backbook (existing account) database queries.
  *
- * Key data relationships:
- *   Account ─── FinancialActual (1:many, joined on accountId + reportingMonth)
- *   Account ─── VampRecord      (1:many, joined on accountId + reportingMonth)
- *   Account ─── User            (salesRep, accountManager)
+ * Key Prisma queries this service will execute once wired up:
  *
- * "Backbook" refers to accounts that are already live (goLiveDate is set and
- * in the past), as opposed to "frontbook" which refers to pipeline/new logos.
+ * getAccounts:
+ *   prisma.account.findMany({
+ *     where: {
+ *       ...(filters.repId ? { salesRepId: filters.repId } : {}),
+ *       ...(filters.tier ? { tier: filters.tier } : {}),
+ *       ...(filters.region ? { region: filters.region } : {}),
+ *       ...(filters.managed !== undefined ? { isManaged: filters.managed } : {}),
+ *     },
+ *     include: {
+ *       financials: {
+ *         where: { reportingMonth: currentMonthStart },
+ *         select: { netRevenue: true, tpvAmount: true },
+ *         take: 1,
+ *         orderBy: { reportingMonth: 'desc' },
+ *       },
+ *       vampRecords: {
+ *         where: { reportingMonth: currentMonthStart },
+ *         select: { vampRatio: true },
+ *         take: 1,
+ *         orderBy: { reportingMonth: 'desc' },
+ *       },
+ *       salesRep: { select: { name: true } },
+ *     },
+ *   });
+ *
+ * getBackbookSummary:
+ *   Two aggregations on FinancialActual:
+ *   1. WHERE account.isManaged = true  → sum netRevenue
+ *   2. WHERE account.isManaged = false → sum netRevenue
+ *   Plus account counts.
  */
 
-// TODO: import { prisma } from '@noram/db';
+import type { DashboardFilters } from '../middleware/filters';
 
-export interface BackbookFilters {
-  tier?: string;
-  repId?: string;
+interface AccountFilters extends DashboardFilters {
   region?: string;
-  isManaged?: boolean;
-  dateRange?: 'MTD' | 'YTD' | 'CUSTOM';
-  startDate?: string;
-  endDate?: string;
+  managed?: boolean;
 }
 
-export interface AccountWithMetrics {
+export interface AccountWithFinancials {
   id: string;
   alias: string;
   tier: string;
@@ -36,73 +56,87 @@ export interface AccountWithMetrics {
   referralPartner: string | null;
   sector: string | null;
   createdAt: string;
+  // Joined financial data
   netRevenueMTD: number;
   tpvAmount: number;
   vampRatio: number | null;
 }
 
-/**
- * getAccounts
- *
- * Intended Prisma query:
- *   prisma.account.findMany({
- *     where: {
- *       goLiveDate: { not: null, lte: new Date() },
- *       ...(filters.tier      ? { tier: filters.tier }           : {}),
- *       ...(filters.repId     ? { salesRepId: filters.repId }    : {}),
- *       ...(filters.region    ? { region: filters.region }       : {}),
- *       ...(filters.isManaged !== undefined
- *           ? { isManaged: filters.isManaged }
- *           : {}),
- *     },
- *     include: {
- *       financials: {
- *         where: { reportingMonth: { gte: periodStart, lte: periodEnd } },
- *         select: { netRevenue: true, tpvAmount: true },
- *       },
- *       vampRecords: {
- *         where: { reportingMonth: { gte: periodStart, lte: periodEnd } },
- *         select: { vampRatio: true },
- *       },
- *       salesRep: true,
- *     },
- *   })
- *
- * After fetching, aggregate:
- *   netRevenueMTD = SUM(financials.netRevenue)
- *   tpvAmount     = SUM(financials.tpvAmount)
- *   vampRatio     = AVG(vampRecords.vampRatio) or latest
- */
-export async function getAccounts(
-  _filters: BackbookFilters
-): Promise<AccountWithMetrics[]> {
-  // TODO: replace with Prisma query + aggregation
-  return [];
-}
-
 export interface BackbookSummary {
-  managed: { count: number; netRevenue: number; tpv: number };
-  unmanaged: { count: number; netRevenue: number; tpv: number };
+  managedCount: number;
+  unmanagedCount: number;
+  managedRevenue: number;
+  unmanagedRevenue: number;
+  totalRevenue: number;
 }
 
 /**
- * getBackbookSummary
- *
- * Intended Prisma query:
- *   Two separate aggregations (managed=true / managed=false):
- *   prisma.account.aggregate({
- *     where: { isManaged: true, goLiveDate: { not: null } },
- *     _count: { id: true },
- *   }) combined with a SUM on related FinancialActual rows.
- *
- *   Alternatively, use a raw query or groupBy on isManaged.
+ * Returns accounts enriched with their latest monthly financials and VAMP ratio.
  */
-export async function getBackbookSummary(
-  _filters: BackbookFilters
-): Promise<BackbookSummary> {
-  // TODO: replace with Prisma aggregation
+export async function getAccounts(_filters: AccountFilters): Promise<AccountWithFinancials[]> {
+  // TODO: replace with real Prisma query joining Account + FinancialActual + VampRecord
+  return [
+    {
+      id: 'acc_001',
+      alias: 'ACME Payments',
+      tier: 'Enterprise',
+      isManaged: true,
+      salesRepId: 'rep_001',
+      accountManagerId: 'am_001',
+      goLiveDate: '2024-03-15T00:00:00Z',
+      region: 'US East',
+      referralPartner: null,
+      sector: 'Retail',
+      createdAt: '2024-01-10T00:00:00Z',
+      netRevenueMTD: 142_000,
+      tpvAmount: 620_000_000,
+      vampRatio: 0.0045,
+    },
+    {
+      id: 'acc_002',
+      alias: 'QuickShop',
+      tier: 'Mid-Market',
+      isManaged: false,
+      salesRepId: 'rep_002',
+      accountManagerId: null,
+      goLiveDate: '2024-07-01T00:00:00Z',
+      region: 'US West',
+      referralPartner: 'PartnerCo',
+      sector: 'E-commerce',
+      createdAt: '2024-05-20T00:00:00Z',
+      netRevenueMTD: 38_000,
+      tpvAmount: 92_000_000,
+      vampRatio: 0.0112,
+    },
+    {
+      id: 'acc_003',
+      alias: 'NorthStar Travel',
+      tier: 'Enterprise',
+      isManaged: true,
+      salesRepId: 'rep_001',
+      accountManagerId: 'am_002',
+      goLiveDate: '2023-11-01T00:00:00Z',
+      region: 'Canada',
+      referralPartner: null,
+      sector: 'Travel',
+      createdAt: '2023-09-15T00:00:00Z',
+      netRevenueMTD: 95_000,
+      tpvAmount: 410_000_000,
+      vampRatio: 0.0031,
+    },
+  ];
+}
+
+/**
+ * Returns a high-level summary of managed vs unmanaged revenue.
+ */
+export async function getBackbookSummary(_filters: DashboardFilters): Promise<BackbookSummary> {
+  // TODO: replace with two Prisma aggregate queries (see JSDoc above)
   return {
-    managed:   { count: 18, netRevenue: 925_000, tpv: 60_000_000 },
-    unmanaged: { count: 7,  netRevenue: 320_000, tpv: 24_500_000 },
+    managedCount:    18,
+    unmanagedCount:  34,
+    managedRevenue:  637_800,
+    unmanagedRevenue: 189_100,
+    totalRevenue:    826_900,
   };
 }

@@ -1,140 +1,175 @@
 /**
  * mapFinancials.ts
  *
- * Maps rows from the "Data" and "BIN TPV - AW" Excel sheets to
+ * Maps rows from the "Data" and "BIN TPV - AW" sheets to
  * Prisma FinancialActualCreateInput objects.
  *
- * "Data" sheet expected columns:
- *   - Account Alias / Account Name : Links to Account.alias
- *   - Reporting Month              : Month of the financials (Excel date or "YYYY-MM")
- *   - Total Fees                   : Gross fee revenue
- *   - Gross FX                     : Gross FX revenue
- *   - CCP Exclusion                : CCP (Commercial Card Programme) exclusions
- *   - Net Revenue                  : totalFees + grossFX - ccpExclusion
- *   - TPV Amount                   : Total Processing Volume
+ * ── "DATA" sheet columns ──────────────────────────────────────────────────────
+ *   Account Alias / Account  — account identifier
+ *   Month / Reporting Month  — reporting period (YYYY-MM or Mon-YY)
+ *   Total Fees               — gross fees charged
+ *   Gross FX                 — gross FX revenue
+ *   CCP Exclusion            — CCP exclusion amount (subtract from revenue)
+ *   Net Revenue              — net revenue = Total Fees + Gross FX - CCP Exclusion
+ *   TPV                      — total payment volume for this account+month
  *
- * "BIN TPV - AW" sheet expected columns:
- *   - Account Alias / Account Name
- *   - Reporting Month
- *   - TPV Amount                   : BIN-level TPV
- *   - BIN Type                     : "Debit" | "Credit" | "Commercial" | "Prepaid"
- *   - Acquirer ID                  : Acquirer identifier
- *
- * When sheetType === 'BIN_TPV', fee/revenue fields default to 0 since
- * that sheet only carries TPV broken down by BIN.
+ * ── "BIN TPV - AW" sheet columns ─────────────────────────────────────────────
+ *   Account / Account Alias  — account identifier
+ *   Month / Date             — reporting period
+ *   BIN Type                 — BIN type (e.g. "Credit", "Debit", "Prepaid")
+ *   Acquirer ID              — acquiring bank identifier
+ *   TPV                      — TPV for this BIN+acquirer combination
+ *   (fee/revenue columns may be absent or zero for BIN rows)
  */
-
-import type { Prisma } from '@prisma/client';
-/**
- * parseExcelDate — converts Excel serial numbers, ISO strings, and Date objects to Date.
- * Excel serial numbers count days from 1900-01-01 with the Lotus 1-2-3 leap year bug
- * (1900 is treated as a leap year, so serials > 60 are shifted by 2 days).
- */
-function parseExcelDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === 'number') {
-    const excelEpoch = new Date(1900, 0, 1);
-    const days = value > 60 ? value - 2 : value - 1;
-    return new Date(excelEpoch.getTime() + days * 86_400_000);
-  }
-  const d = new Date(value as string);
-  return isNaN(d.getTime()) ? null : d;
-}
 
 export type SheetType = 'DATA' | 'BIN_TPV';
 
-// "Data" sheet column names
-const DATA_COLS = {
-  alias: 'Account Alias',
-  month: 'Reporting Month',
-  totalFees: 'Total Fees',
-  grossFX: 'Gross FX',
-  ccpExclusion: 'CCP Exclusion',
-  netRevenue: 'Net Revenue',
-  tpv: 'TPV Amount',
-};
-
-// "BIN TPV - AW" sheet column names
-const BIN_TPV_COLS = {
-  alias: 'Account Alias',
-  month: 'Reporting Month',
-  tpv: 'TPV Amount',
-  binType: 'BIN Type',
-  acquirerId: 'Acquirer ID',
-};
-
-function parseDecimal(value: any): number {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const n = parseFloat(value.replace(/[$,£€\s]/g, ''));
-    return isNaN(n) ? 0 : n;
-  }
-  return 0;
+export interface FinancialActualCreateInput {
+  accountId: string;
+  reportingMonth: Date;
+  totalFees: number;
+  grossFX: number;
+  ccpExclusion: number;
+  netRevenue: number;
+  tpvAmount: number;
+  binType: string | null;
+  acquirerId: string | null;
 }
+
+// ─── Month parsing ─────────────────────────────────────────────────────────────
+
+/**
+ * Parses various month string formats to a Date set to the first of the month.
+ * Handles: "2025-06", "Jun-25", "Jun 2025", "01/06/2025", Excel serial numbers.
+ */
+function parseReportingMonth(raw: unknown): Date | null {
+  if (!raw) return null;
+
+  // Excel serial date (number)
+  if (typeof raw === 'number') {
+    // Excel date serial: days since 1900-01-01 (with leap year bug)
+    const date = new Date((raw - 25569) * 86400 * 1000);
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+
+  const str = String(raw).trim();
+
+  // "YYYY-MM" or "YYYY-MM-DD"
+  const isoMatch = str.match(/^(\d{4})-(\d{2})/);
+  if (isoMatch) {
+    return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, 1);
+  }
+
+  // "Mon-YY" e.g. "Jun-25"
+  const shortMatch = str.match(/^([A-Za-z]{3})-(\d{2})$/);
+  if (shortMatch) {
+    const year = 2000 + parseInt(shortMatch[2]);
+    const d = new Date(`${shortMatch[1]} 1, ${year}`);
+    return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+
+  // "Mon YYYY" e.g. "Jun 2025"
+  const longMatch = str.match(/^([A-Za-z]{3})\s+(\d{4})$/);
+  if (longMatch) {
+    const d = new Date(`${longMatch[1]} 1, ${longMatch[2]}`);
+    return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+
+  // Fallback
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+
+  return null;
+}
+
+// ─── Numeric helpers ───────────────────────────────────────────────────────────
+
+function parseNum(raw: unknown): number {
+  if (raw == null) return 0;
+  const n = parseFloat(String(raw).replace(/[,$%\s]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function get(row: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const key of keys) {
+    const val = row[key] ??
+      Object.entries(row).find(([k]) => k.trim().toLowerCase() === key.toLowerCase())?.[1];
+    if (val != null) return val;
+  }
+  return null;
+}
+
+// ─── Main mapper ──────────────────────────────────────────────────────────────
 
 /**
  * mapFinancials
  *
- * @param rows       Raw row objects from the relevant sheet
- * @param sheetType  'DATA' or 'BIN_TPV' — determines which column mapping to use
- * @returns          Array of Prisma.FinancialActualCreateInput objects
+ * Maps raw rows to FinancialActualCreateInput.
+ * Handles both the "DATA" and "BIN_TPV" sheet formats.
+ *
+ * @param rows      Raw row objects from xlsx
+ * @param sheetType 'DATA' for the main fee/revenue sheet, 'BIN_TPV' for BIN TPV breakdown
  */
 export function mapFinancials(
-  rows: Record<string, any>[],
+  rows: Record<string, unknown>[],
   sheetType: SheetType
-): Prisma.FinancialActualCreateInput[] {
-  const results: Prisma.FinancialActualCreateInput[] = [];
+): FinancialActualCreateInput[] {
+  const results: FinancialActualCreateInput[] = [];
 
   for (const row of rows) {
-    const cols = sheetType === 'DATA' ? DATA_COLS : BIN_TPV_COLS;
-    const alias = (row[cols.alias] as string | null)?.trim();
-    const monthRaw = row[cols.month];
+    const accountId = String(
+      get(row, 'Account Alias', 'Account', 'Alias') ?? ''
+    ).trim();
+    if (!accountId) continue;
 
-    if (!alias || !monthRaw) {
-      continue; // Skip header/summary rows without account and month
-    }
-
-    const reportingMonth = parseExcelDate(monthRaw);
+    const reportingMonth = parseReportingMonth(
+      get(row, 'Month', 'Reporting Month', 'Date', 'Period')
+    );
     if (!reportingMonth) {
-      console.warn(`[mapFinancials] Could not parse month "${monthRaw}" for account "${alias}"`);
+      console.warn(`[mapFinancials] Skipping row with unparseable month:`, row);
       continue;
     }
 
-    // Normalise to first day of month
-    reportingMonth.setDate(1);
-    reportingMonth.setHours(0, 0, 0, 0);
-
     if (sheetType === 'DATA') {
-      const totalFees = parseDecimal(row[DATA_COLS.totalFees]);
-      const grossFX = parseDecimal(row[DATA_COLS.grossFX]);
-      const ccpExclusion = parseDecimal(row[DATA_COLS.ccpExclusion]);
-      const netRevenue =
-        parseDecimal(row[DATA_COLS.netRevenue]) || totalFees + grossFX - ccpExclusion;
+      const totalFees    = parseNum(get(row, 'Total Fees',  'Fees'));
+      const grossFX      = parseNum(get(row, 'Gross FX',   'FX Revenue'));
+      const ccpExclusion = parseNum(get(row, 'CCP Exclusion', 'CCP'));
+      // Use explicit Net Revenue column if present; otherwise calculate
+      const netRevenueRaw = get(row, 'Net Revenue', 'Net Rev');
+      const netRevenue    = netRevenueRaw != null
+        ? parseNum(netRevenueRaw)
+        : totalFees + grossFX - ccpExclusion;
+      const tpvAmount = parseNum(get(row, 'TPV', 'Total Payment Volume'));
 
       results.push({
-        account: { connect: { alias } },
+        accountId,
         reportingMonth,
         totalFees,
         grossFX,
         ccpExclusion,
         netRevenue,
-        tpvAmount: parseDecimal(row[DATA_COLS.tpv]),
-        binType: null,
+        tpvAmount,
+        binType:    null,
         acquirerId: null,
       });
     } else {
-      // BIN_TPV sheet — only TPV figures with BIN/acquirer breakdown
+      // BIN_TPV sheet — minimal fee data, enriched BIN/acquirer detail
+      const tpvAmount  = parseNum(get(row, 'TPV', 'Total Payment Volume', 'Amount'));
+      const binType    = String(get(row, 'BIN Type', 'BIN', 'Card Type') ?? '').trim() || null;
+      const acquirerId = String(get(row, 'Acquirer ID', 'Acquirer', 'ACQ ID') ?? '').trim() || null;
+
       results.push({
-        account: { connect: { alias } },
+        accountId,
         reportingMonth,
-        totalFees: 0,
-        grossFX: 0,
+        totalFees:    0,
+        grossFX:      0,
         ccpExclusion: 0,
-        netRevenue: 0,
-        tpvAmount: parseDecimal(row[BIN_TPV_COLS.tpv]),
-        binType: (row[BIN_TPV_COLS.binType] as string | null)?.trim() ?? null,
-        acquirerId: (row[BIN_TPV_COLS.acquirerId] as string | null)?.trim() ?? null,
+        netRevenue:   0,
+        tpvAmount,
+        binType,
+        acquirerId,
       });
     }
   }
