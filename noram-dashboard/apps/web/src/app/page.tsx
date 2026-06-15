@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import type { DashboardFilters } from '@/types';
 import GlobalFilters from '@/components/layout/GlobalFilters';
-import ExecutiveSummary from '@/components/sections/ExecutiveSummary';
-import FinancialTrends from '@/components/sections/FinancialTrends';
-import FrontbookPipeline from '@/components/sections/FrontbookPipeline';
-import BackbookAccount from '@/components/sections/BackbookAccount';
-import Leaderboards from '@/components/sections/Leaderboards';
+import { ExecutiveSummary } from '@/components/sections/ExecutiveSummary';
+import { FinancialTrends } from '@/components/sections/FinancialTrends';
+import { FrontbookPipeline } from '@/components/sections/FrontbookPipeline';
+import { BackbookAccount } from '@/components/sections/BackbookAccount';
+import { Leaderboards } from '@/components/sections/Leaderboards';
 
 const DEFAULT_FILTERS: DashboardFilters = {
   dateRange: 'MTD',
