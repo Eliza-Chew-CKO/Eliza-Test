@@ -1,61 +1,51 @@
 import { type Request, type Response, type NextFunction } from 'express';
 
+export type DateRange = 'MTD' | 'YTD' | 'CUSTOM';
+
+export interface ParsedFilters {
+  dateRange: DateRange;
+  startDate?: Date;
+  endDate?: Date;
+  repId?: string;
+  tier?: string;
+}
+
 // Extend Express Request to carry parsed filters
 declare global {
   namespace Express {
     interface Request {
-      parsedFilters: ParsedFilters;
+      filters: ParsedFilters;
     }
   }
 }
 
-export interface ParsedFilters {
-  dateRange: 'MTD' | 'YTD' | 'CUSTOM';
-  startDate: Date | null;
-  endDate: Date | null;
-  repId: string | null;
-  tier: string | null;
-}
-
-const VALID_DATE_RANGES = ['MTD', 'YTD', 'CUSTOM'] as const;
-const VALID_TIERS = ['Enterprise', 'Mid-Market', 'SMB'] as const;
+const VALID_DATE_RANGES: DateRange[] = ['MTD', 'YTD', 'CUSTOM'];
 
 /**
- * Middleware that parses and validates dashboard filter query parameters.
+ * parseFilters middleware
  *
- * Supported query params:
- *   - dateRange  : 'MTD' | 'YTD' | 'CUSTOM'  (default: 'MTD')
- *   - startDate  : ISO date string             (required when dateRange=CUSTOM)
- *   - endDate    : ISO date string             (required when dateRange=CUSTOM)
- *   - repId      : string user ID              (optional)
- *   - tier       : 'Enterprise'|'Mid-Market'|'SMB' (optional)
+ * Parses and validates standard dashboard filter query params, then attaches
+ * them to req.filters for use in downstream route handlers and service calls.
  *
- * Attaches `req.parsedFilters` for downstream route handlers.
+ * Validated params:
+ *   - dateRange: must be one of MTD | YTD | CUSTOM (defaults to MTD)
+ *   - startDate: ISO date string, required when dateRange=CUSTOM
+ *   - endDate:   ISO date string, required when dateRange=CUSTOM
+ *   - repId:     optional string
+ *   - tier:      optional, must be Enterprise | Mid-Market | SMB if provided
  */
 export function parseFilters(req: Request, res: Response, next: NextFunction): void {
-  const {
-    dateRange = 'MTD',
-    startDate: startDateStr,
-    endDate: endDateStr,
-    repId,
-    tier,
-  } = req.query as Record<string, string | undefined>;
+  const { dateRange, startDate, endDate, repId, tier } = req.query as Record<string, string>;
 
   // Validate dateRange
-  if (!VALID_DATE_RANGES.includes(dateRange as 'MTD' | 'YTD' | 'CUSTOM')) {
-    res.status(400).json({
-      success: false,
-      error: `Invalid dateRange. Must be one of: ${VALID_DATE_RANGES.join(', ')}`,
-    });
-    return;
-  }
+  const parsedRange: DateRange =
+    VALID_DATE_RANGES.includes(dateRange as DateRange)
+      ? (dateRange as DateRange)
+      : 'MTD';
 
-  // Parse dates for CUSTOM range
-  let startDate: Date | null = null;
-  let endDate: Date | null = null;
-
-  if (dateRange === 'CUSTOM') {
-    if (!startDateStr || !endDateStr) {
+  // Validate CUSTOM date range requirements
+  if (parsedRange === 'CUSTOM') {
+    if (!startDate || !endDate) {
       res.status(400).json({
         success: false,
         error: 'startDate and endDate are required when dateRange is CUSTOM',
@@ -63,67 +53,45 @@ export function parseFilters(req: Request, res: Response, next: NextFunction): v
       return;
     }
 
-    startDate = new Date(startDateStr);
-    endDate = new Date(endDateStr);
+    const start = new Date(startDate);
+    const end   = new Date(endDate);
 
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       res.status(400).json({
         success: false,
-        error: 'Invalid date format. Use ISO 8601 (e.g., 2025-01-01)',
+        error: 'startDate and endDate must be valid ISO date strings',
       });
       return;
     }
 
-    if (startDate > endDate) {
+    if (start > end) {
       res.status(400).json({
         success: false,
         error: 'startDate must be before or equal to endDate',
       });
       return;
     }
+
+    req.filters = { dateRange: parsedRange, startDate: start, endDate: end, repId, tier };
+    next();
+    return;
   }
 
   // Validate tier if provided
-  if (tier && !VALID_TIERS.includes(tier as 'Enterprise' | 'Mid-Market' | 'SMB')) {
+  const validTiers = ['Enterprise', 'Mid-Market', 'SMB'];
+  if (tier && !validTiers.includes(tier)) {
     res.status(400).json({
       success: false,
-      error: `Invalid tier. Must be one of: ${VALID_TIERS.join(', ')}`,
+      error: `tier must be one of: ${validTiers.join(', ')}`,
     });
     return;
   }
 
-  req.parsedFilters = {
-    dateRange: dateRange as 'MTD' | 'YTD' | 'CUSTOM',
-    startDate,
-    endDate,
-    repId: repId ?? null,
-    tier: tier ?? null,
+  req.filters = {
+    dateRange: parsedRange,
+    repId:     repId   || undefined,
+    tier:      tier    || undefined,
   };
 
   next();
-}
-
-/**
- * Helper: compute start and end Date objects from parsedFilters.
- * Resolves MTD/YTD into concrete date boundaries for use in Prisma queries.
- */
-export function resolveDateRange(filters: ParsedFilters): { start: Date; end: Date } {
-  const now = new Date();
-
-  if (filters.dateRange === 'CUSTOM' && filters.startDate && filters.endDate) {
-    return { start: filters.startDate, end: filters.endDate };
-  }
-
-  if (filters.dateRange === 'YTD') {
-    return {
-      start: new Date(now.getFullYear(), 0, 1), // Jan 1 of current year
-      end: now,
-    };
-  }
-
-  // MTD: first day of current month to now
-  return {
-    start: new Date(now.getFullYear(), now.getMonth(), 1),
-    end: now,
-  };
 }

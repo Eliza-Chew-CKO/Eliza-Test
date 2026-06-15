@@ -1,44 +1,47 @@
-import { Router, Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { parseFilters } from '../middleware/filters';
+// TODO: wire these stubs to real Prisma queries once the DB is seeded
 import { getKPISummary, getFinancialTrends } from '../services/revenueService';
 
 const router = Router();
 
 /**
  * GET /api/kpi/summary
- * Returns executive KPI summary: net revenue, frontbook MNR, backbook revenue, TPV, go-live count, VAMP avg.
+ *
+ * Returns a KPISummary object for the requested period and optional rep / tier filters.
  *
  * Query params:
- *   dateRange  — 'MTD' | 'YTD' | 'CUSTOM'
- *   startDate  — ISO date string (when dateRange === 'CUSTOM')
- *   endDate    — ISO date string (when dateRange === 'CUSTOM')
- *   repId      — filter by sales rep ID
- *   tier       — filter by account tier (Enterprise | Mid-Market | SMB)
+ *   - dateRange: 'MTD' | 'YTD' | 'CUSTOM'
+ *   - startDate?: ISO date string (required when dateRange === 'CUSTOM')
+ *   - endDate?:   ISO date string (required when dateRange === 'CUSTOM')
+ *   - repId?:     string — filter to a single sales rep
+ *   - tier?:      'Enterprise' | 'Mid-Market' | 'SMB'
  */
 router.get('/summary', parseFilters, async (req: Request, res: Response) => {
   try {
-    // TODO: wire to revenueService.getKPISummary once Prisma DB is connected
-    const summary = await getKPISummary(req.filters);
-    res.json({ success: true, data: summary });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch KPI summary';
-    res.status(500).json({ success: false, error: message });
+    const filters = (req as any).filters;
+    // TODO: replace mock with: const data = await getKPISummary(filters);
+    const data = await getKPISummary(filters);
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 /**
  * GET /api/kpi/trends
- * Returns monthly revenue actuals vs targets for trend charts.
- * Shape: { month: string, actual: number, target: number }[]
+ *
+ * Returns monthly revenue actuals vs targets for charting.
+ * Shape: { month: 'Jan 2025', actual: number, target: number, tpv: number }[]
  */
 router.get('/trends', parseFilters, async (req: Request, res: Response) => {
   try {
-    // TODO: wire to revenueService.getFinancialTrends
-    const trends = await getFinancialTrends(req.filters);
-    res.json({ success: true, data: trends });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch trend data';
-    res.status(500).json({ success: false, error: message });
+    const filters = (req as any).filters;
+    // TODO: replace mock with real FinancialActual + Target aggregation
+    const data = await getFinancialTrends(filters);
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
