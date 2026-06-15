@@ -1,122 +1,164 @@
 /**
  * mapVAMP.ts
  *
- * Maps rows from the "Excessive VAMP" Excel sheet to Prisma VampRecordCreateInput objects.
- *
- * VAMP = Visa Acquirer Monitoring Programme
+ * Maps rows from the "Excessive VAMP" sheet to VampRecord objects.
  *
  * Expected sheet columns:
- *   - Account Alias       : Links to Account.alias
- *   - Reporting Month     : Month of the VAMP assessment
- *   - Created Events      : Total created transaction events
- *   - Fraud Events        : Transactions flagged as fraudulent
- *   - Total Captured Events : Total successfully captured events
- *   - VAMP Ratio          : Pre-calculated ratio (or computed if missing)
- *   - VAMP Type           : "Standard" | "CNP" (Card Not Present)
- *   - VAMP Assessment     : "Acceptable" | "Elevated" | "Excessive"
- *   - Acquirer Country    : ISO 2-letter country code of the acquirer
- *   - Acquirer ID         : Unique acquirer identifier
+ *   Alias                   — account alias (matched to Account.alias)
+ *   Owner                   — sales rep name or email (informational, not stored separately)
+ *   Reporting Month         — "YYYY-MM" or date string
+ *   Acquirer                — acquirer ID string
+ *   Acquirer Country        — ISO 2-letter country code (e.g. "US", "GB")
+ *   Created Events          — total transaction events created
+ *   Fraud Events            — events flagged as fraudulent
+ *   Total Captured Events   — total captured (settled) events
+ *   VAMP Ratio              — (optional) pre-calculated; computed if missing
  *
- * VAMP Ratio calculation (if column is absent or zero):
+ * VAMP Classification Logic:
  *   vampRatio = fraudEvents / totalCapturedEvents
+ *   EXCESSIVE if: vampRatio > 0.015 AND fraudEvents > 1,500
+ *   Assessment Charge (when EXCESSIVE): (createdEvents + fraudEvents) * $8
  *
- * Assessment classification (if column is absent):
- *   < 0.005  → "Acceptable"
- *   0.005–0.009 → "Elevated"
- *   >= 0.010 → "Excessive"
+ * The @@unique([accountId, reportingMonth, acquirerId]) constraint makes
+ * re-runs safe (upsert by natural key).
  */
 
-import type { Prisma } from '@prisma/client';
-/**
- * parseExcelDate — converts Excel serial numbers, ISO strings, and Date objects to Date.
- * Excel serial numbers count days from 1900-01-01 with the Lotus 1-2-3 leap year bug
- * (1900 is treated as a leap year, so serials > 60 are shifted by 2 days).
- */
-function parseExcelDate(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === 'number') {
-    const excelEpoch = new Date(1900, 0, 1);
-    const days = value > 60 ? value - 2 : value - 1;
-    return new Date(excelEpoch.getTime() + days * 86_400_000);
+// ─── Column name constants ─────────────────────────────────────────────────────
+const COL_ALIAS = 'Alias';
+const COL_REPORTING_MONTH = 'Reporting Month';
+const COL_ACQUIRER = 'Acquirer';
+const COL_ACQUIRER_COUNTRY = 'Acquirer Country';
+const COL_CREATED_EVENTS = 'Created Events';
+const COL_FRAUD_EVENTS = 'Fraud Events';
+const COL_TOTAL_CAPTURED_EVENTS = 'Total Captured Events';
+const COL_VAMP_RATIO = 'VAMP Ratio';
+
+// ─── Thresholds ────────────────────────────────────────────────────────────────
+const EXCESSIVE_RATIO_THRESHOLD = 0.015;   // Visa threshold
+const EXCESSIVE_FRAUD_EVENT_THRESHOLD = 1_500;
+const ASSESSMENT_CHARGE_PER_EVENT = 8;     // USD per event when Excessive
+
+// ─── Parsers ───────────────────────────────────────────────────────────────────
+
+function parseReportingMonth(value: unknown): Date {
+  const str = String(value ?? '').trim();
+  if (/^\d{4}-\d{2}$/.test(str)) return new Date(`${str}-01`);
+  const asNum = Number(str);
+  if (!isNaN(asNum) && asNum > 40_000) {
+    const d = new Date((asNum - 25569) * 86400 * 1000);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
   }
-  const d = new Date(value as string);
-  return isNaN(d.getTime()) ? null : d;
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return new Date(d.getFullYear(), d.getMonth(), 1);
+  return new Date();
 }
 
-// Column constants
-const COL_ALIAS = 'Account Alias';
-const COL_MONTH = 'Reporting Month';
-const COL_CREATED = 'Created Events';
-const COL_FRAUD = 'Fraud Events';
-const COL_CAPTURED = 'Total Captured Events';
-const COL_RATIO = 'VAMP Ratio';
-const COL_TYPE = 'VAMP Type';
-const COL_ASSESSMENT = 'VAMP Assessment';
-const COL_COUNTRY = 'Acquirer Country';
-const COL_ACQUIRER = 'Acquirer ID';
+function parseIntSafe(value: unknown): number {
+  const n = parseInt(String(value ?? '0').replace(/,/g, ''), 10);
+  return isNaN(n) ? 0 : n;
+}
 
-/**
- * classifyAssessment
- * Assigns a VAMP assessment label based on the ratio thresholds.
- */
-function classifyAssessment(ratio: number): string {
-  if (ratio >= 0.01) return 'Excessive';
-  if (ratio >= 0.005) return 'Elevated';
-  return 'Acceptable';
+function parseFloatSafe(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = parseFloat(String(value).replace(/[%,]/g, ''));
+  return isNaN(n) ? null : n;
+}
+
+export interface VampRow {
+  [key: string]: unknown;
 }
 
 /**
  * mapVAMP
  *
- * @param rows  Raw row objects from the "Excessive VAMP" sheet
- * @returns     Array of Prisma.VampRecordCreateInput objects
+ * Upserts VampRecord rows from the "Excessive VAMP" sheet.
+ *
+ * @param rows        — raw Excel rows from readSheet()
+ * @param prismaClient — PrismaClient instance
  */
-export function mapVAMP(rows: Record<string, any>[]): Prisma.VampRecordCreateInput[] {
-  const results: Prisma.VampRecordCreateInput[] = [];
+export async function mapVAMP(rows: VampRow[], prismaClient: any): Promise<void> {
+  let upserted = 0;
+  let skipped = 0;
 
   for (const row of rows) {
-    const alias = (row[COL_ALIAS] as string | null)?.trim();
-    const monthRaw = row[COL_MONTH];
-
-    if (!alias || !monthRaw) {
+    const alias = String(row[COL_ALIAS] ?? '').trim();
+    if (!alias) {
+      skipped++;
       continue;
     }
 
-    const reportingMonth = parseExcelDate(monthRaw);
-    if (!reportingMonth) {
-      console.warn(`[mapVAMP] Could not parse month "${monthRaw}" for account "${alias}"`);
+    // Look up account by alias
+    const account = await prismaClient.account.findUnique({ where: { alias } });
+    if (!account) {
+      console.warn(`[mapVAMP] No account found for alias: "${alias}"`);
+      skipped++;
       continue;
     }
-    reportingMonth.setDate(1);
-    reportingMonth.setHours(0, 0, 0, 0);
 
-    const createdEvents = typeof row[COL_CREATED] === 'number' ? Math.round(row[COL_CREATED]) : 0;
-    const fraudEvents = typeof row[COL_FRAUD] === 'number' ? Math.round(row[COL_FRAUD]) : 0;
-    const totalCapturedEvents = typeof row[COL_CAPTURED] === 'number' ? Math.round(row[COL_CAPTURED]) : createdEvents;
+    const reportingMonth = parseReportingMonth(row[COL_REPORTING_MONTH]);
+    const acquirerId = row[COL_ACQUIRER]
+      ? String(row[COL_ACQUIRER]).trim() || null
+      : null;
+    const acquirerCountry = row[COL_ACQUIRER_COUNTRY]
+      ? String(row[COL_ACQUIRER_COUNTRY]).trim().toUpperCase() || null
+      : null;
 
-    // Compute VAMP ratio if not provided
-    let vampRatio = typeof row[COL_RATIO] === 'number' ? row[COL_RATIO] : 0;
-    if (vampRatio === 0 && totalCapturedEvents > 0) {
-      vampRatio = fraudEvents / totalCapturedEvents;
-    }
+    const createdEvents = parseIntSafe(row[COL_CREATED_EVENTS]);
+    const fraudEvents = parseIntSafe(row[COL_FRAUD_EVENTS]);
+    const totalCapturedEvents = parseIntSafe(row[COL_TOTAL_CAPTURED_EVENTS]);
 
-    const vampAssessment =
-      (row[COL_ASSESSMENT] as string | null)?.trim() || classifyAssessment(vampRatio);
+    // Use pre-calculated ratio if present, otherwise compute it
+    const preCalcRatio = parseFloatSafe(row[COL_VAMP_RATIO]);
+    const vampRatio =
+      preCalcRatio !== null
+        ? preCalcRatio
+        : totalCapturedEvents > 0
+        ? fraudEvents / totalCapturedEvents
+        : 0;
 
-    results.push({
-      account: { connect: { alias } },
-      reportingMonth,
-      createdEvents,
-      fraudEvents,
-      totalCapturedEvents,
-      vampRatio: Math.round(vampRatio * 1_000_000) / 1_000_000, // 6 decimal places
-      vampType: (row[COL_TYPE] as string | null)?.trim() ?? 'Standard',
-      vampAssessment,
-      acquirerCountry: (row[COL_COUNTRY] as string | null)?.trim() ?? null,
-      acquirerId: (row[COL_ACQUIRER] as string | null)?.trim() ?? null,
+    // Classify as EXCESSIVE per Visa thresholds
+    const isExcessive =
+      vampRatio > EXCESSIVE_RATIO_THRESHOLD && fraudEvents > EXCESSIVE_FRAUD_EVENT_THRESHOLD;
+    const vampType = isExcessive ? 'EXCESSIVE' : 'NORMAL';
+
+    // Assessment charge only applies to EXCESSIVE accounts
+    const vampAssessment = isExcessive
+      ? String((createdEvents + fraudEvents) * ASSESSMENT_CHARGE_PER_EVENT)
+      : null;
+
+    await prismaClient.vampRecord.upsert({
+      where: {
+        accountId_reportingMonth_acquirerId: {
+          accountId: account.id,
+          reportingMonth,
+          acquirerId: acquirerId ?? '',
+        },
+      },
+      create: {
+        accountId: account.id,
+        reportingMonth,
+        createdEvents,
+        fraudEvents,
+        totalCapturedEvents,
+        vampRatio,
+        vampType,
+        vampAssessment,
+        acquirerCountry,
+        acquirerId,
+      },
+      update: {
+        createdEvents,
+        fraudEvents,
+        totalCapturedEvents,
+        vampRatio,
+        vampType,
+        vampAssessment,
+        acquirerCountry,
+      },
     });
+
+    upserted++;
   }
 
-  return results;
+  console.log(`[mapVAMP] Upserted ${upserted} VAMP records, skipped ${skipped}.`);
 }
