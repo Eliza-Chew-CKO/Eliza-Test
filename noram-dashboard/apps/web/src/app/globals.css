@@ -2,76 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
-/* -----------------------------------------------------------------------
-   CSS Custom Properties — Dashboard Color Tokens
-   ----------------------------------------------------------------------- */
+/* ── Dashboard color tokens ── */
 :root {
-  /* Brand / Primary */
-  --color-primary: #0070f3;
-  --color-primary-light: #4da6ff;
-  --color-primary-dark: #005acc;
+  /* Brand */
+  --color-primary:        #0070f3;
+  --color-primary-dark:   #005acc;
+  --color-primary-light:  #4d90ff;
 
-  /* Surface */
-  --color-bg: #f9fafb;
-  --color-surface: #ffffff;
-  --color-surface-elevated: #ffffff;
-  --color-border: #e5e7eb;
+  /* Backgrounds */
+  --color-bg-page:        #f9fafb; /* neutral-50 */
+  --color-bg-card:        #ffffff;
+  --color-bg-sidebar:     #111827; /* neutral-900 */
 
   /* Text */
-  --color-text-primary: #111827;
-  --color-text-secondary: #6b7280;
-  --color-text-muted: #9ca3af;
+  --color-text-primary:   #111827; /* neutral-900 */
+  --color-text-secondary: #6b7280; /* neutral-500 */
+  --color-text-muted:     #9ca3af; /* neutral-400 */
+  --color-text-inverse:   #ffffff;
+
+  /* Borders */
+  --color-border:         #e5e7eb; /* neutral-200 */
+  --color-border-focus:   #0070f3;
 
   /* Semantic */
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
+  --color-success:        #22c55e;
+  --color-warning:        #f59e0b;
+  --color-danger:         #ef4444;
 
   /* Chart palette */
-  --chart-1: #0070f3;
-  --chart-2: #10b981;
-  --chart-3: #f59e0b;
-  --chart-4: #8b5cf6;
-  --chart-5: #ef4444;
-  --chart-6: #06b6d4;
-
-  /* Sidebar */
-  --sidebar-bg: #1f2937;
-  --sidebar-text: #d1d5db;
-  --sidebar-active-bg: #0070f3;
-  --sidebar-active-text: #ffffff;
-  --sidebar-width: 240px;
+  --chart-1:              #0070f3;
+  --chart-2:              #22c55e;
+  --chart-3:              #f59e0b;
+  --chart-4:              #8b5cf6;
+  --chart-5:              #06b6d4;
+  --chart-6:              #f97316;
 }
 
-/* Dark mode overrides */
-.dark {
-  --color-bg: #111827;
-  --color-surface: #1f2937;
-  --color-surface-elevated: #374151;
-  --color-border: #374151;
-  --color-text-primary: #f9fafb;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
-}
-
-/* -----------------------------------------------------------------------
-   Base styles
-   ----------------------------------------------------------------------- */
+/* ── Base ── */
 body {
-  @apply bg-gray-50 font-sans text-neutral-900 antialiased;
-  background-color: var(--color-bg);
+  @apply bg-neutral-50 font-sans text-neutral-900 antialiased;
 }
 
-/* Smooth focus rings */
-*:focus-visible {
-  @apply outline-none ring-2 ring-primary-500 ring-offset-2;
-}
+/* ── Utility layer extensions ── */
+@layer components {
+  .card {
+    @apply bg-white rounded-xl shadow-card p-6;
+  }
 
-/* -----------------------------------------------------------------------
-   Utility layer extras
-   ----------------------------------------------------------------------- */
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
+  .section-title {
+    @apply text-xl font-semibold text-neutral-900 mb-1;
+  }
+
+  .section-description {
+    @apply text-sm text-neutral-500 mb-6;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2
+           text-sm font-medium text-white hover:bg-primary-600
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
+           transition-colors;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-lg border border-neutral-200
+           bg-white px-4 py-2 text-sm font-medium text-neutral-700
+           hover:bg-neutral-50 focus:outline-none focus:ring-2
+           focus:ring-primary-500 focus:ring-offset-2 transition-colors;
+  }
+
+  .input {
+    @apply block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2
+           text-sm text-neutral-900 placeholder-neutral-400
+           focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+  }
+
+  /* Skeleton loader animation */
+  .skeleton {
+    @apply animate-pulse rounded bg-neutral-200;
   }
 }

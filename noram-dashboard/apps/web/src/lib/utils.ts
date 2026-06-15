@@ -1,70 +1,80 @@
-import { type ClassValue, clsx } from 'clsx';
+import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { format, parseISO } from 'date-fns';
 
-/**
- * Merge Tailwind CSS class names safely, resolving conflicts via tailwind-merge.
- */
+// -----------------------------------------------------------------------
+// cn — className merge helper (clsx + tailwind-merge)
+// Deduplicates Tailwind classes and merges class strings safely.
+// -----------------------------------------------------------------------
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-/**
- * Format a number as USD currency using Intl.NumberFormat.
- * @param value - Numeric value to format
- * @param currency - ISO 4217 currency code (default: 'USD')
- */
+// -----------------------------------------------------------------------
+// formatCurrency — formats a number as a USD currency string.
+// Examples: formatCurrency(1234567.89) → "$1,234,567.89"
+//           formatCurrency(5000, 'GBP') → "£5,000.00"
+// -----------------------------------------------------------------------
 export function formatCurrency(value: number, currency = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
 }
 
-/**
- * Format a decimal ratio as a percentage string.
- * @param value - Decimal ratio (e.g. 0.154 → "15.4%")
- * @param decimals - Number of decimal places (default: 1)
- */
+// -----------------------------------------------------------------------
+// formatPct — formats a decimal or percentage value as a percentage string.
+// Pass the value already multiplied (e.g. 12.5 → "12.5%").
+// -----------------------------------------------------------------------
 export function formatPct(value: number, decimals = 1): string {
-  return `${(value * 100).toFixed(decimals)}%`;
+  return `${value.toFixed(decimals)}%`;
 }
 
-/**
- * Calculate variance between actual and target values.
- * @returns absolute difference and percentage variance as a decimal
- */
-export function calcVariance(actual: number, target: number): { absolute: number; pct: number } {
-  if (target === 0) return { absolute: actual, pct: 0 };
+// -----------------------------------------------------------------------
+// calcVariance — computes absolute and percentage variance between
+// actual and target values.
+// Returns { absolute, pct } where pct is signed (+ve = over target).
+// -----------------------------------------------------------------------
+export function calcVariance(
+  actual: number,
+  target: number
+): { absolute: number; pct: number } {
   const absolute = actual - target;
-  const pct = absolute / target;
+  const pct = target !== 0 ? (absolute / target) * 100 : 0;
   return { absolute, pct };
 }
 
-/**
- * Extrapolate a run-rate for the full month based on MTD progress.
- * @param mtdValue - Month-to-date cumulative value
- * @param dayOfMonth - Current day number (1–31)
- * @param daysInMonth - Total days in the current month
- */
-export function getRunRate(mtdValue: number, dayOfMonth: number, daysInMonth: number): number {
-  if (dayOfMonth === 0) return 0;
+// -----------------------------------------------------------------------
+// getRunRate — projects a MTD value to end-of-month based on elapsed days.
+// Useful for forecasting whether a rep / region will hit their target.
+// -----------------------------------------------------------------------
+export function getRunRate(
+  mtdValue: number,
+  dayOfMonth: number,
+  daysInMonth: number
+): number {
+  if (dayOfMonth <= 0) return 0;
   return (mtdValue / dayOfMonth) * daysInMonth;
 }
 
-/**
- * Format a Date (or ISO string) as "Jan 2025".
- */
+// -----------------------------------------------------------------------
+// formatMonth — returns a human-readable month label from a Date or ISO string.
+// Example: formatMonth('2025-01-01') → "Jan 2025"
+// -----------------------------------------------------------------------
 export function formatMonth(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  const d = typeof date === 'string' ? parseISO(date) : date;
+  return format(d, 'MMM yyyy');
 }
 
-/**
- * Return a Tailwind text colour class based on variance sign.
- */
-export function varianceColor(value: number): string {
-  if (value >= 0) return 'text-green-400';
-  if (value >= -0.05) return 'text-yellow-400';
-  return 'text-red-400';
+// -----------------------------------------------------------------------
+// formatNumber — compact number formatting for large values in charts.
+// Example: formatNumber(1500000) → "1.5M"
+// -----------------------------------------------------------------------
+export function formatNumber(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
 }
