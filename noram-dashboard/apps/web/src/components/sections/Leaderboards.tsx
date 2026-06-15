@@ -19,6 +19,7 @@ export default function Leaderboards() {
     <section id="leaderboards" className="space-y-6">
       <h2 className="text-lg font-semibold text-white">Leaderboards</h2>
 
+      {/* Rep MR Leaderboard */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <h3 className="text-sm font-semibold text-gray-300 mb-4">Rep Leaderboard — MR Performance 2026</h3>
         <table className="w-full text-sm">
@@ -52,6 +53,7 @@ export default function Leaderboards() {
         </table>
       </div>
 
+      {/* Activity Top 10s */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         {ACTIVITY_STAGES.map((stage, si) => (
           <div key={stage} className="bg-gray-900 border border-gray-800 rounded-xl p-4">

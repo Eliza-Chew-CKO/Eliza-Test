@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Run: npm install xlsx
+// npm install xlsx
 // import * as XLSX from 'xlsx';
 
 interface IngestOptions {
@@ -9,7 +9,6 @@ interface IngestOptions {
   dryRun?: boolean;
 }
 
-// Maps Google Sheet tab names to internal handlers
 const SHEET_MAP = {
   'NORAM Users - AW': 'users',
   'Data': 'accounts_and_financials',
@@ -21,24 +20,28 @@ const SHEET_MAP = {
 } as const;
 
 export async function parseExcel({ filePath, dryRun = false }: IngestOptions) {
-  if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  // const workbook = XLSX.readFile(filePath);
+  // Uncomment and install xlsx package to enable actual parsing
 
   console.log(`Parsing: ${path.basename(filePath)}`);
   console.log('Sheets to process:', Object.keys(SHEET_MAP).join(', '));
 
-  // const workbook = XLSX.readFile(filePath);
-  // Uncomment after: npm install xlsx
-
+  // Each mapper handles column normalization for its sheet
   if (!dryRun) {
-    // await mapUsers(XLSX.utils.sheet_to_json(workbook.Sheets['NORAM Users - AW']));
-    // await mapAccounts(XLSX.utils.sheet_to_json(workbook.Sheets['Data']));
-    // await mapOpportunities(XLSX.utils.sheet_to_json(workbook.Sheets['Salesforce Opportunity Snapshot']));
-    // await mapFinancials(XLSX.utils.sheet_to_json(workbook.Sheets['BIN TPV - AW']));
-    // await mapTargets(XLSX.utils.sheet_to_json(workbook.Sheets['Targets']));
-    // await mapVAMP(XLSX.utils.sheet_to_json(workbook.Sheets['Excessive VAMP']));
+    // await mapUsers(workbook.Sheets[...]);
+    // await mapAccounts(workbook.Sheets[...]);
+    // await mapOpportunities(workbook.Sheets[...]);
+    // await mapFinancials(workbook.Sheets[...]);
+    // await mapTargets(workbook.Sheets[...]);
+    // await mapVAMP(workbook.Sheets[...]);
   }
 }
 
+// CLI entry
 if (require.main === module) {
   const args = process.argv.slice(2);
   const fileArg = args.find((a) => a.startsWith('--file='))?.split('=')[1];

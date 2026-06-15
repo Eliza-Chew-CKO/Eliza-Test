@@ -1,136 +1,137 @@
 # NORAM Sales Dashboard
 
-A full-stack internal sales dashboard for the North America (NORAM) team, providing real-time visibility into revenue performance, frontbook pipeline, backbook account health, VAMP metrics, and rep leaderboards.
+A comprehensive internal sales dashboard for the NORAM region, providing real-time visibility into frontbook pipeline, backbook account performance, financial actuals vs targets, VAMP metrics, and rep leaderboards.
 
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
-| Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, Recharts |
+|-------|-----------|
+| Frontend | Next.js 14 (App Router), React 18, TypeScript |
+| Styling | Tailwind CSS, clsx, tailwind-merge |
+| Charts | Recharts 2 |
+| Tables | @tanstack/react-table 8 |
 | Backend | Express 4, TypeScript, Node.js |
-| Database | PostgreSQL + Prisma ORM |
-| Data Tables | @tanstack/react-table v8 |
-| Monorepo | npm Workspaces |
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- PostgreSQL 14+
-- npm 9+
-
-### Setup
-
-```bash
-# 1. Clone the repository
-git clone <repo-url>
-cd noram-dashboard
-
-# 2. Install all workspace dependencies
-npm install
-
-# 3. Copy environment file and fill in your values
-cp .env.example .env
-
-# 4. Run database migrations
-cd packages/db
-npx prisma migrate dev --name init
-
-# 5. Start development servers (from repo root)
-npm run dev
-```
-
-The web app will be available at http://localhost:3000 and the API at http://localhost:4000.
-
----
-
-## Environment Variables
-
-Create a `.env` file at the repo root with the following variables:
-
-```env
-# PostgreSQL connection string
-DATABASE_URL="postgresql://user:password@localhost:5432/noram_dashboard"
-
-# Public API base URL (used by the Next.js frontend)
-NEXT_PUBLIC_API_URL="http://localhost:4000"
-```
-
-### Variable Reference
-
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | Full PostgreSQL connection string used by Prisma |
-| `NEXT_PUBLIC_API_URL` | Yes | Base URL for the Express API, exposed to the browser |
-
----
+| ORM | Prisma 5 |
+| Database | PostgreSQL 15 |
+| HTTP Client | Axios |
+| Monorepo | npm workspaces |
 
 ## Folder Structure
 
 ```
 noram-dashboard/
 ├── apps/
-│   ├── web/                    # Next.js 14 frontend (App Router)
-│   │   ├── src/
-│   │   │   ├── app/            # Next.js App Router pages and layouts
-│   │   │   ├── components/
-│   │   │   │   ├── charts/     # Recharts wrapper components
-│   │   │   │   ├── kpi/        # KPI card components
-│   │   │   │   ├── layout/     # Sidebar, Header, GlobalFilters
-│   │   │   │   ├── sections/   # Full dashboard sections (Executive, Pipeline, etc.)
-│   │   │   │   └── tables/     # DataTable and LeaderboardTable
-│   │   │   ├── lib/            # API client, utility functions
-│   │   │   └── types/          # Shared TypeScript interfaces
-│   │   ├── tailwind.config.js
-│   │   └── next.config.js
-│   │
-│   └── api/                    # Express 4 REST API backend
+│   ├── web/                  # Next.js 14 frontend (App Router)
+│   │   └── src/
+│   │       ├── app/          # Next.js app directory (pages, layouts, routes)
+│   │       ├── components/   # UI components (layout, kpi, charts, tables, sections)
+│   │       ├── lib/          # API client, utility functions
+│   │       └── types/        # Shared TypeScript interfaces
+│   └── api/                  # Express REST API backend
 │       └── src/
-│           ├── index.ts         # App entry point, middleware, route mounting
-│           ├── routes/          # Route handlers: kpi, pipeline, backbook, leaderboard, targets
-│           ├── services/        # Business logic: revenueService, pipelineService, etc.
-│           └── middleware/      # Filter parsing and validation middleware
-│
+│           ├── routes/       # Route handlers (kpi, pipeline, backbook, leaderboard, targets)
+│           ├── services/     # Business logic services (revenue, pipeline, backbook, vamp)
+│           └── middleware/   # Express middleware (filter parsing, auth, error handling)
 ├── packages/
-│   └── db/                     # Shared Prisma package
-│       ├── prisma/
-│       │   └── schema.prisma    # Full data model: User, Account, Opportunity, FinancialActual, etc.
-│       └── src/
-│           └── index.ts         # PrismaClient singleton export
-│
+│   └── db/                   # Prisma schema and client singleton
+│       ├── prisma/           # schema.prisma
+│       └── src/              # PrismaClient export
 └── scripts/
-    └── ingest/                 # Data ingestion scripts for Excel files
-        ├── parseExcel.ts        # Workbook parser and sheet dispatcher
-        ├── mapUsers.ts          # NORAM Users sheet mapper
-        ├── mapAccounts.ts       # Account data mapper
-        ├── mapOpportunities.ts  # Salesforce Opportunity Snapshot mapper
-        ├── mapFinancials.ts     # Data + BIN TPV sheet mapper
-        ├── mapTargets.ts        # Targets sheet mapper
-        └── mapVAMP.ts           # Excessive VAMP sheet mapper
+    └── ingest/               # Data ingestion scripts for Excel source files
 ```
 
----
+## Environment Variables
 
-## Scripts
+Create a `.env` file in the root (or per-app) with the following variables:
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start all apps in development mode concurrently |
-| `npm run build` | Build all apps and packages |
-| `npm run lint` | Run ESLint across all workspaces |
+```env
+# PostgreSQL connection string
+DATABASE_URL="postgresql://user:password@localhost:5432/noram_dashboard"
 
----
+# API base URL (used by Next.js frontend)
+NEXT_PUBLIC_API_URL="http://localhost:4000"
+```
 
-## Data Ingestion
+### Variable Reference
 
-To ingest data from the source Excel file:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string for Prisma |
+| `NEXT_PUBLIC_API_URL` | Yes | Base URL for the Express API (exposed to browser) |
+
+## Setup Instructions
+
+### Prerequisites
+
+- Node.js 18+
+- npm 9+
+- PostgreSQL 15 running locally (or a remote connection string)
+
+### 1. Clone the repository
 
 ```bash
-cd scripts/ingest
-npx ts-node parseExcel.ts --file /path/to/NORAM_Data.xlsx
+git clone https://github.com/your-org/noram-dashboard.git
+cd noram-dashboard
 ```
 
-See `scripts/README.md` for full documentation on the expected Excel structure.
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+This installs all workspace dependencies across `apps/web`, `apps/api`, and `packages/db`.
+
+### 3. Configure environment variables
+
+```bash
+cp .env.example .env
+# Edit .env and fill in your DATABASE_URL and NEXT_PUBLIC_API_URL
+```
+
+### 4. Run database migrations
+
+```bash
+cd packages/db
+npx prisma migrate dev --name init
+npx prisma generate
+cd ../..
+```
+
+### 5. (Optional) Ingest data from Excel
+
+If you have the source Excel file, run:
+
+```bash
+npx ts-node scripts/ingest/parseExcel.ts --file path/to/NORAM_Data.xlsx
+```
+
+See `scripts/README.md` for full ingest documentation.
+
+### 6. Start development servers
+
+```bash
+npm run dev
+```
+
+This concurrently starts:
+- Next.js frontend at `http://localhost:3000`
+- Express API at `http://localhost:4000`
+
+## Available Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start all apps in development mode |
+| `npm run build` | Build all apps for production |
+| `npm run lint` | Run ESLint across all workspaces |
+| `npm run db:migrate` | Run Prisma migrations |
+| `npm run db:studio` | Open Prisma Studio |
+
+## Dashboard Sections
+
+1. **Executive Summary** — High-level KPI cards: Net Revenue, Frontbook MNR, Backbook Revenue, TPV, Go-Live Count, VAMP Ratio
+2. **Financial Trends** — Revenue actuals vs targets over time, TPV by month
+3. **Frontbook Pipeline** — Pipeline funnel by stage, open opportunities table
+4. **Backbook Accounts** — Managed vs unmanaged breakdown, account-level metrics
+5. **Leaderboards** — Top reps ranked by revenue and deals closed

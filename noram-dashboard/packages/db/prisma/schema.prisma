@@ -8,17 +8,17 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String
-  email       String   @unique
-  role        UserRole
-  salesRegion String?
-  createdAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  role         UserRole
+  salesRegion  String?
+  createdAt    DateTime @default(now())
 
-  accountsAsRep      Account[]     @relation("SalesRep")
-  accountsAsAM       Account[]     @relation("AccountManager")
-  opportunitiesAsRep Opportunity[] @relation("OpportunitySalesRep")
-  opportunitiesAs2nd Opportunity[] @relation("OpportunitySecondOwner")
+  accountsAsRep      Account[]      @relation("SalesRep")
+  accountsAsAM       Account[]      @relation("AccountManager")
+  opportunitiesAsRep Opportunity[]  @relation("OpportunitySalesRep")
+  opportunitiesAs2nd Opportunity[]  @relation("OpportunitySecondOwner")
 }
 
 enum UserRole {
@@ -41,8 +41,8 @@ model Account {
   sector           String?
   createdAt        DateTime  @default(now())
 
-  salesRep       User?             @relation("SalesRep", fields: [salesRepId], references: [id])
-  accountManager User?             @relation("AccountManager", fields: [accountManagerId], references: [id])
+  salesRep       User?           @relation("SalesRep", fields: [salesRepId], references: [id])
+  accountManager User?           @relation("AccountManager", fields: [accountManagerId], references: [id])
   opportunities  Opportunity[]
   financials     FinancialActual[]
   vampRecords    VampRecord[]
@@ -55,21 +55,21 @@ enum Tier {
 }
 
 model Opportunity {
-  id                  String           @id @default(cuid())
-  accountId           String
-  salesRepId          String?
-  secondOwnerId       String?
-  stage               OpportunityStage
-  type                OpportunityType  @default(NEW_BUSINESS)
-  baseMonthlyRevenue  Decimal?         @db.Decimal(18, 2)
-  rollMonthlyRevenue  Decimal?         @db.Decimal(18, 2)
-  weightedExpectedMNR Decimal?         @db.Decimal(18, 2)
-  closeDate           DateTime?
-  goLiveDate          DateTime?
-  rating              String?
-  stageHistory        Json             @default("[]")
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  id                   String           @id @default(cuid())
+  accountId            String
+  salesRepId           String?
+  secondOwnerId        String?
+  stage                OpportunityStage
+  type                 OpportunityType  @default(NEW_BUSINESS)
+  baseMonthlyRevenue   Decimal?         @db.Decimal(18, 2)
+  rollMonthlyRevenue   Decimal?         @db.Decimal(18, 2)
+  weightedExpectedMNR  Decimal?         @db.Decimal(18, 2)
+  closeDate            DateTime?
+  goLiveDate           DateTime?
+  rating               String?
+  stageHistory         Json             @default("[]")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   account     Account @relation(fields: [accountId], references: [id])
   salesRep    User?   @relation("OpportunitySalesRep", fields: [salesRepId], references: [id])
@@ -94,17 +94,17 @@ enum OpportunityType {
 }
 
 model FinancialActual {
-  id             String   @id @default(cuid())
-  accountId      String
-  reportingMonth DateTime
-  totalFees      Decimal  @db.Decimal(18, 2)
-  grossFX        Decimal  @default(0) @db.Decimal(18, 2)
-  ccpExclusion   Decimal  @default(0) @db.Decimal(18, 2)
-  netRevenue     Decimal  @db.Decimal(18, 2)
-  tpvAmount      Decimal  @default(0) @db.Decimal(18, 2)
-  binType        String?
-  acquirerId     String?
-  createdAt      DateTime @default(now())
+  id               String   @id @default(cuid())
+  accountId        String
+  reportingMonth   DateTime
+  totalFees        Decimal  @db.Decimal(18, 2)
+  grossFX          Decimal  @default(0) @db.Decimal(18, 2)
+  ccpExclusion     Decimal  @default(0) @db.Decimal(18, 2)
+  netRevenue       Decimal  @db.Decimal(18, 2)
+  tpvAmount        Decimal  @default(0) @db.Decimal(18, 2)
+  binType          String?
+  acquirerId       String?
+  createdAt        DateTime @default(now())
 
   account Account @relation(fields: [accountId], references: [id])
 
@@ -112,12 +112,12 @@ model FinancialActual {
 }
 
 model Target {
-  id          String     @id @default(cuid())
-  period      DateTime
-  type        TargetType
-  amount      Decimal    @db.Decimal(18, 2)
-  goLiveCount Int?
-  createdAt   DateTime   @default(now())
+  id           String     @id @default(cuid())
+  period       DateTime
+  type         TargetType
+  amount       Decimal    @db.Decimal(18, 2)
+  goLiveCount  Int?
+  createdAt    DateTime   @default(now())
 
   @@unique([period, type])
 }

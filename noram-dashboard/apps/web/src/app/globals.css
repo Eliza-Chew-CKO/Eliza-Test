@@ -2,10 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
+/* -----------------------------------------------------------------------
+   CSS Custom Properties — Dashboard Color Tokens
+   ----------------------------------------------------------------------- */
 :root {
+  /* Brand / Primary */
+  --color-primary: #0070f3;
+  --color-primary-light: #4da6ff;
+  --color-primary-dark: #005acc;
+
+  /* Surface */
+  --color-bg: #f9fafb;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-border: #e5e7eb;
+
+  /* Text */
+  --color-text-primary: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+
+  /* Semantic */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* Chart palette */
+  --chart-1: #0070f3;
+  --chart-2: #10b981;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+  --chart-5: #ef4444;
+  --chart-6: #06b6d4;
+
+  /* Sidebar */
+  --sidebar-bg: #1f2937;
+  --sidebar-text: #d1d5db;
+  --sidebar-active-bg: #0070f3;
+  --sidebar-active-text: #ffffff;
   --sidebar-width: 240px;
 }
 
+/* Dark mode overrides */
+.dark {
+  --color-bg: #111827;
+  --color-surface: #1f2937;
+  --color-surface-elevated: #374151;
+  --color-border: #374151;
+  --color-text-primary: #f9fafb;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+}
+
+/* -----------------------------------------------------------------------
+   Base styles
+   ----------------------------------------------------------------------- */
 body {
-  @apply bg-gray-950 text-gray-100;
+  @apply bg-gray-50 font-sans text-neutral-900 antialiased;
+  background-color: var(--color-bg);
+}
+
+/* Smooth focus rings */
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary-500 ring-offset-2;
+}
+
+/* -----------------------------------------------------------------------
+   Utility layer extras
+   ----------------------------------------------------------------------- */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 }

@@ -1,148 +1,154 @@
-// ─── Enums ────────────────────────────────────────────────────────────────────
+// ─── Core domain types ────────────────────────────────────────────────────────
 
-export type DateRange = 'MTD' | 'YTD' | 'CUSTOM';
-export type Tier = 'TIER_1' | 'TIER_2' | 'TIER_3';
-export type BookType = 'FRONTBOOK' | 'BACKBOOK';
-export type TargetType = 'FRONTBOOK_BASE' | 'FRONTBOOK_ROLL' | 'BACKBOOK_MANAGED' | 'BACKBOOK_UNMANAGED' | 'TPV';
-export type OpportunityStage = 'EXPLORE' | 'PROPOSE' | 'TRADE' | 'HANDOVER' | 'LIVE' | 'CLOSED_WON' | 'DISQUALIFIED';
-export type VampType = 'NORMAL' | 'EXCESSIVE';
-
-// ─── Filters ──────────────────────────────────────────────────────────────────
-
-export interface GlobalFilters {
-  dateRange: DateRange;
-  startDate?: string;
-  endDate?: string;
-  ownerId?: string;
-  tier?: Tier;
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  salesRegion: string;
+  createdAt: string; // ISO date string
 }
 
-// ─── KPI / Summary ────────────────────────────────────────────────────────────
-
-export interface KPIMetric {
-  label: string;
-  value: number;
-  target?: number;
-  varianceAbs?: number;
-  variancePct?: number;
-  runRate?: number;
-  runRateMoMPct?: number;
-  yoyPct?: number;
-  currency?: boolean;
-}
-
-export interface ExecutiveSummaryData {
-  totalMR: KPIMetric;
-  frontbookMR: KPIMetric;
-  backbookMR: KPIMetric;
-  backbookManagedMR: KPIMetric;
-  backbookUnmanagedMR: KPIMetric;
-  usBinTPV: KPIMetric;
-  frontbookRunRate: KPIMetric;
-  backbookRunRate: KPIMetric;
-}
-
-// ─── Financial Trends ─────────────────────────────────────────────────────────
-
-export interface MonthlyDataPoint {
-  month: string; // 'Jan' | 'Feb' | ...
-  actual: number;
-  baseTarget: number;
-  rollTarget: number;
-}
-
-export interface RollBaseGapRow {
-  account: string;
-  salesRep: string;
-  closeDate: string;
-  stage: OpportunityStage;
-  baseMR: number;
-  rollMR: number;
-  gapAbs: number;
-  gapLabel: string;
-}
-
-// ─── Pipeline ─────────────────────────────────────────────────────────────────
-
-export interface GoLiveTracker {
-  count: number;
-  target: number;
-  pacedTarget: number;
-}
-
-export interface ClosedWonRow {
-  account: string;
-  salesRep: string;
-  secondOwner?: string;
-  rating: string;
-  mrYTD: number;
-  tpvYTD: number;
-  lastMonthMR: number;
-}
-
-export interface PipelineBottleneck {
-  label: string;
-  last90: number;
-  prior90: number;
-  changePct: number;
-}
-
-export interface WeightedPipelinePoint {
-  month: string;
-  explore: number;
-  propose: number;
-  trade: number;
-  handover: number;
-  live: number;
-}
-
-export interface PipelineChangeRow {
-  account: string;
-  salesRep: string;
-  previousStage: OpportunityStage;
-  currentStage: OpportunityStage;
-  changeDirection: 'UPGRADE' | 'DOWNGRADE' | 'NEW';
-  changeRationale: string;
-  weightedMNR: number;
-}
-
-// ─── Backbook / Account Management ───────────────────────────────────────────
-
-export interface BackbookClientRow {
-  clientAlias: string;
-  tier: Tier;
-  rating: string;
-  qtdMR: number;
-  mrPctToTarget: number;
-  ytdTPV: number;
-  accountManager?: string;
-}
-
-export interface VampMonthlyPoint {
-  month: string;
-  vampRatio: number;
-}
-
-export interface ExcessiveVampRow {
+export interface Account {
+  id: string;
   alias: string;
-  owner: string;
-  domain: string;
-  acquirer: string;
-  vampAssessment: number;
+  tier: 'Enterprise' | 'Mid-Market' | 'SMB';
+  isManaged: boolean;
+  salesRepId: string;
+  accountManagerId: string | null;
+  goLiveDate: string | null; // ISO date string
+  region: string;
+  referralPartner: string | null;
+  sector: string | null;
+  createdAt: string;
 }
 
-// ─── Leaderboard ─────────────────────────────────────────────────────────────
+export type OpportunityStage =
+  | 'Discovery'
+  | 'Scoping'
+  | 'Proposal'
+  | 'Negotiation'
+  | 'Closed Won'
+  | 'Closed Lost';
 
-export interface RepLeaderboardRow {
-  rank: number;
-  repName: string;
-  mrYTD: number;
-  mrLastMonth: number;
-  mrYTDPct: number; // 0-1, for inline bar
+export type OpportunityType = 'New Logo' | 'Expansion' | 'Renewal';
+
+export interface StageHistoryEntry {
+  stage: OpportunityStage;
+  enteredAt: string; // ISO date string
+  exitedAt: string | null;
 }
 
-export interface ActivityLeaderboardRow {
+export interface Opportunity {
+  id: string;
+  accountId: string;
+  salesRepId: string;
+  stage: OpportunityStage;
+  type: OpportunityType;
+  baseMonthlyRevenue: number;
+  rollMonthlyRevenue: number;
+  weightedExpectedMNR: number;
+  closeDate: string; // ISO date string
+  goLiveDate: string | null;
+  rating: string | null;
+  secondOwnerId: string | null;
+  stageHistory: StageHistoryEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinancialActual {
+  id: string;
+  accountId: string;
+  reportingMonth: string; // ISO date string (first day of month)
+  totalFees: number;
+  grossFX: number;
+  ccpExclusion: number;
+  netRevenue: number;
+  tpvAmount: number;
+  binType: string | null;
+  acquirerId: string | null;
+  createdAt: string;
+}
+
+export type TargetType =
+  | 'FRONTBOOK_BASE'
+  | 'FRONTBOOK_ROLL'
+  | 'BACKBOOK_MANAGED'
+  | 'BACKBOOK_UNMANAGED'
+  | 'TPV';
+
+export interface Target {
+  id: string;
+  period: string; // "YYYY-MM"
+  type: TargetType;
+  amount: number;
+  goLiveCount: number | null;
+  createdAt: string;
+}
+
+export interface VampRecord {
+  id: string;
+  accountId: string;
+  reportingMonth: string; // ISO date string
+  createdEvents: number;
+  fraudEvents: number;
+  totalCapturedEvents: number;
+  vampRatio: number;
+  vampType: string;
+  vampAssessment: string | null;
+  acquirerCountry: string | null;
+  acquirerId: string | null;
+  createdAt: string;
+}
+
+// ─── Aggregated / computed types ──────────────────────────────────────────────
+
+export interface KPISummary {
+  netRevenue: number;
+  netRevenueTarget: number;
+  netRevenueVariance: number;
+  netRevenueVariancePct: number;
+  frontbookMNR: number;
+  frontbookTarget: number;
+  backbookRevenue: number;
+  tpvAmount: number;
+  goLiveCount: number;
+  vampRatioAvg: number;
+}
+
+// ─── Dashboard filter state ───────────────────────────────────────────────────
+
+export interface DashboardFilters {
+  dateRange: 'MTD' | 'YTD' | 'CUSTOM';
+  startDate?: string; // ISO date string, used when dateRange === 'CUSTOM'
+  endDate?: string;   // ISO date string, used when dateRange === 'CUSTOM'
+  repId: string | null;
+  tier: string | null;
+}
+
+// ─── API response wrapper ─────────────────────────────────────────────────────
+
+export interface ApiResponse<T> {
+  data: T;
+  success: boolean;
+  error?: string;
+}
+
+// ─── Leaderboard entry ────────────────────────────────────────────────────────
+
+export interface LeaderboardEntry {
   rank: number;
-  repName: string;
-  count: number;
+  rep: User;
+  revenue: number;
+  target: number;
+  deals: number;
+}
+
+// ─── Trend chart data point ───────────────────────────────────────────────────
+
+export interface TrendDataPoint {
+  month: string; // "Jan 2025"
+  actual: number;
+  target: number;
 }

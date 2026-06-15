@@ -17,6 +17,7 @@ export default function BackbookAccount() {
     <section id="backbook-account" className="space-y-6">
       <h2 className="text-lg font-semibold text-white">Backbook & Account Management</h2>
 
+      {/* Managed Client Table */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <h3 className="text-sm font-semibold text-gray-300 mb-4">Managed Backbook Client Performance</h3>
         <table className="w-full text-sm">
@@ -47,6 +48,7 @@ export default function BackbookAccount() {
         </table>
       </div>
 
+      {/* VAMP Ratio Trend */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <h3 className="text-sm font-semibold text-gray-300 mb-4">Backbook VAMP Ratio by Month</h3>
         <ResponsiveContainer width="100%" height={200}>
@@ -55,6 +57,7 @@ export default function BackbookAccount() {
             <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 12 }} />
             <YAxis tickFormatter={(v) => `${(v * 100).toFixed(1)}%`} tick={{ fill: '#9ca3af', fontSize: 11 }} />
             <Tooltip formatter={(v: number) => [`${(v * 100).toFixed(2)}%`, 'VAMP Ratio']} />
+            {/* Excessive threshold line at 1.5% */}
             <Line type="monotone" dataKey="ratio" stroke="#ef4444" strokeWidth={2} dot={{ fill: '#ef4444' }} name="VAMP Ratio" />
           </LineChart>
         </ResponsiveContainer>
