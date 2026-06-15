@@ -1,168 +1,173 @@
-# NORAM Data Ingestion Scripts
+# Data Ingest Scripts
 
-This directory contains TypeScript scripts for ingesting data from the NORAM Excel workbook into the PostgreSQL database via Prisma.
+These scripts load data from an Excel workbook (.xlsx) into the NORAM Dashboard PostgreSQL database via Prisma.
+
+---
+
+## Overview
+
+The main entry point is `parseExcel.ts`, which reads a workbook, dispatches each sheet to its dedicated mapper, and upserts the results into the database.
+
+```
+scripts/ingest/
+├── parseExcel.ts        # Workbook reader and sheet dispatcher
+├── mapUsers.ts          # "NORAM Users - AW" sheet
+├── mapAccounts.ts       # Account data mapper (derives from Data sheet)
+├── mapOpportunities.ts  # "Salesforce Opportunity Snapshot" sheet
+├── mapFinancials.ts     # "Data" and "BIN TPV - AW" sheets
+├── mapTargets.ts        # "Targets" sheet
+└── mapVAMP.ts           # "Excessive VAMP" sheet
+```
 
 ---
 
 ## How to Run
 
+### Prerequisites
+
+1. Database is running and `DATABASE_URL` is set in `.env`
+2. Prisma client is generated: `npm run generate` from the repo root
+3. Migrations have been applied: `npm run migrate`
+
+### Run the ingestion
+
 ```bash
-# From the repo root
-npx ts-node scripts/ingest/parseExcel.ts --file path/to/NORAM_Data.xlsx
+npx ts-node scripts/ingest/parseExcel.ts --file=path/to/data.xlsx
 ```
 
-You can also run with a relative path:
+### Dry run (no database writes)
 
 ```bash
-npx ts-node scripts/ingest/parseExcel.ts --file ./data/NORAM_Q2_2025.xlsx
+npx ts-node scripts/ingest/parseExcel.ts --file=path/to/data.xlsx --dry-run
 ```
 
-The script will log a summary of how many records were parsed per sheet.
-
----
-
-## What Each Script Does
-
-| Script | Purpose |
-|---|---|
-| `parseExcel.ts` | Entry point — opens the workbook, reads each sheet, dispatches to the appropriate mapper, logs counts |
-| `mapUsers.ts` | Maps "NORAM Users - AW" → `User` inserts |
-| `mapAccounts.ts` | Maps unique accounts from "Data" sheet → `Account` inserts |
-| `mapOpportunities.ts` | Maps "Salesforce Opportunity Snapshot" → `Opportunity` inserts |
-| `mapFinancials.ts` | Maps "Data" and "BIN TPV - AW" → `FinancialActual` inserts |
-| `mapTargets.ts` | Maps "Targets" → `Target` inserts |
-| `mapVAMP.ts` | Maps "Excessive VAMP" → `VampRecord` inserts |
+The dry run logs what would be processed per sheet without touching the database.
 
 ---
 
 ## Expected Excel Sheet Structure
 
-### Sheet: "NORAM Users - AW"
+### Sheet 1: "NORAM Users - AW"
 
-Sales reps and account managers.
+Maps to the `User` model.
 
-| Column | Type | Notes |
-|---|---|---|
-| Name | String | Full display name |
-| Email | String | Unique key — used for upserts |
-| Role | String | "AE", "SDR", "AM", "Manager" |
-| Sales Region | String | "NORAM East", "NORAM West", etc. |
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| Name | string | Yes | Full name |
+| Email | string | Yes | Unique upsert key |
+| Role | string | Yes | "Sales Rep", "Account Manager", "Revenue Ops", "Executive" |
+| Sales Region | string | No | e.g. "US-East", "Canada" |
 
----
+### Sheet 2: "Data"
 
-### Sheet: "Data"
+Maps to the `FinancialActual` model (main revenue data, `binType = null`).
 
-Monthly financial actuals per account.
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| Alias | string | Yes | Must match an Account.alias |
+| Month | string | Yes | "YYYY-MM" or any parseable date |
+| Total Fees | number | Yes | Gross fees |
+| Gross FX | number | No | FX revenue component |
+| CCP Exclusion | number | No | Credit card processing exclusion |
+| Net Revenue | number | Yes | Net revenue after exclusions |
+| TPV | number | No | Total payment volume |
+| Acquirer ID | string | No | Acquirer identifier |
 
-| Column | Type | Notes |
-|---|---|---|
-| Account Alias | String | Links to Account |
-| Reporting Month | Date/String | First day of month |
-| Total Fees | Number | Gross fee revenue |
-| Gross FX | Number | Gross FX revenue |
-| CCP Exclusion | Number | Commercial Card Programme deduction |
-| Net Revenue | Number | totalFees + grossFX − ccpExclusion |
-| TPV Amount | Number | Total Processing Volume |
+### Sheet 3: "BIN TPV - AW"
 
----
+Maps to `FinancialActual` rows with a populated `binType` (BIN-level TPV breakdown).
 
-### Sheet: "BIN TPV - AW"
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| Alias | string | Yes | Must match Account.alias |
+| Month | string | Yes | "YYYY-MM" |
+| BIN Type | string | No | e.g. "VISA_CREDIT", "MASTERCARD_DEBIT" |
+| TPV | number | Yes | Payment volume for this BIN |
+| Acquirer ID | string | No | Acquirer identifier |
 
-TPV broken down by BIN type and acquirer.
+### Sheet 4: "Targets"
 
-| Column | Type | Notes |
-|---|---|---|
-| Account Alias | String | Links to Account |
-| Reporting Month | Date/String | First day of month |
-| TPV Amount | Number | Processing volume for this BIN |
-| BIN Type | String | "Debit", "Credit", "Commercial", "Prepaid" |
-| Acquirer ID | String | Acquirer identifier |
+Maps to the `Target` model.
 
----
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| Period | string | Yes | "YYYY-MM" |
+| Type | string | Yes | "Frontbook Base", "Frontbook Roll", "Backbook Managed", "Backbook Unmanaged", "TPV" |
+| Amount | number | Yes | Target monetary value |
+| GoLiveCount | number | No | Target go-live count (used with Frontbook Base) |
 
-### Sheet: "Targets"
+### Sheet 5: "Excessive VAMP"
 
-Monthly frontbook, backbook, and TPV targets.
+Maps to the `VampRecord` model.
 
-| Column | Type | Notes |
-|---|---|---|
-| Period | String/Date | "YYYY-MM" or Excel date |
-| Type | String | See TargetType enum values below |
-| Amount | Number | Revenue or TPV target |
-| Go Live Count | Number | Only for FRONTBOOK_BASE rows |
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| Alias | string | Yes | Must match Account.alias |
+| Reporting Month | string | Yes | "YYYY-MM" |
+| Acquirer | string | No | Acquirer ID |
+| Acquirer Country | string | No | ISO country code |
+| Created Events | number | Yes | Total transaction events |
+| Fraud Events | number | Yes | Events flagged as fraudulent |
+| Total Captured Events | number | Yes | Total settled events |
+| VAMP Ratio | number | No | Pre-calculated; computed as fraudEvents/totalCapturedEvents if missing |
 
-Target type values (case-insensitive):
-- `frontbook base` → `FRONTBOOK_BASE`
-- `frontbook roll` → `FRONTBOOK_ROLL`
-- `backbook managed` → `BACKBOOK_MANAGED`
-- `backbook unmanaged` → `BACKBOOK_UNMANAGED`
-- `tpv` → `TPV`
+VAMP classification thresholds:
+- **EXCESSIVE**: vampRatio > 0.015 AND fraudEvents > 1,500
+- **Assessment charge** (EXCESSIVE only): (createdEvents + fraudEvents) × $8
 
----
+### Sheet 6: "Salesforce Opportunity Snapshot"
 
-### Sheet: "Excessive VAMP"
+Maps to the `Opportunity` model.
 
-Visa Acquirer Monitoring Programme fraud ratio records.
-
-| Column | Type | Notes |
-|---|---|---|
-| Account Alias | String | Links to Account |
-| Reporting Month | Date/String | First day of month |
-| Created Events | Number | Total transaction events created |
-| Fraud Events | Number | Fraudulent events |
-| Total Captured Events | Number | Successfully captured events |
-| VAMP Ratio | Number | fraudEvents / totalCapturedEvents (computed if absent) |
-| VAMP Type | String | "Standard" or "CNP" |
-| VAMP Assessment | String | "Acceptable" / "Elevated" / "Excessive" (classified if absent) |
-| Acquirer Country | String | ISO 2-letter country code |
-| Acquirer ID | String | Acquirer identifier |
-
----
-
-### Sheet: "Salesforce Opportunity Snapshot"
-
-Pipeline data exported from Salesforce.
-
-| Column | Type | Notes |
-|---|---|---|
-| Opportunity ID | String | Salesforce ID (for dedup) |
-| Account Name | String | Links to Account.alias |
-| Owner Email | String | Links to User |
-| Stage | String | Salesforce stage name (normalised) |
-| Type | String | "New Business" / "Existing Business" |
-| Base MNR | Number | Base monthly revenue |
-| Roll MNR | Number | Roll-on monthly revenue |
-| Weighted MNR | Number | Pre-weighted value (computed if absent) |
-| Close Date | Date | Expected close date |
-| Go Live Date | Date | Expected go-live date |
-| Rating | String | "Hot" / "Warm" / "Cold" |
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| Opportunity ID | string | Yes | Salesforce 18-char ID |
+| Account Name | string | Yes | Must match Account.alias |
+| Owner Email | string | Yes | Must match a User.email |
+| Second Owner Email | string | No | Co-owner |
+| Stage | string | Yes | Salesforce stage (normalised to Discovery/Scoping/Proposal/Negotiation/Closed Won) |
+| Type | string | No | "New Business", "Expansion", "Renewal" |
+| Base MNR | number | No | Base monthly net revenue |
+| Roll MNR | number | No | Roll (committed) monthly net revenue |
+| Weighted MNR | number | No | Probability-adjusted MNR |
+| Close Date | string | No | Expected close date |
+| Go Live Date | string | No | Expected go-live date |
+| Rating | string | No | "A", "B", "C" |
 
 ---
 
 ## Data Validation Notes
 
-- **Email** is the unique key for User records. Rows without a valid email are skipped.
-- **Account Alias** is the unique key for Account records. Case-sensitive matching.
-- **Reporting Month** is normalised to the first day of the month before insert.
-- **VAMP Ratio** is computed (`fraudEvents / totalCapturedEvents`) if the column is zero or missing.
-- **VAMP Assessment** is classified against standard thresholds if missing:
-  - < 0.5% → Acceptable
-  - 0.5–0.99% → Elevated
-  - ≥ 1.0% → Excessive
-- Decimal values with currency symbols (`$`, `£`, `€`) are stripped before parsing.
+- **Missing accounts**: Rows with an Alias that doesn't match a known Account are skipped with a warning. Always run the Users and Accounts ingest before Financials, VAMP, and Opportunities.
+- **Missing users**: Opportunity and Account rows with unresolved owner emails are skipped with a warning.
+- **Date parsing**: Dates are parsed from multiple formats (ISO 8601, UK DD/MM/YYYY, Excel serial numbers). If a date cannot be parsed, the current date is used and a warning is logged.
+- **Currency values**: Columns containing `$` signs or commas are cleaned before parsing.
+- **VAMP ratio**: If the sheet provides a pre-calculated ratio it is used directly. Otherwise it is computed as `fraudEvents / totalCapturedEvents`.
 
 ---
 
-## Handling Re-runs (Upsert Logic)
+## Re-run Handling (Upsert Logic)
 
-All insert operations should use Prisma's `createMany` with `skipDuplicates: true`, or `upsert` on the natural unique key:
+All mappers use Prisma `upsert` operations with natural key constraints, so the scripts are safe to re-run:
 
-| Model | Unique Key |
+| Model | Upsert Key |
 |---|---|
 | User | `email` |
 | Account | `alias` |
-| FinancialActual | `(accountId, reportingMonth, binType, acquirerId)` |
-| Target | `(period, type)` |
-| VampRecord | `(accountId, reportingMonth, acquirerId)` |
+| FinancialActual | `[accountId, reportingMonth, binType, acquirerId]` |
+| Target | `[period, type]` |
+| VampRecord | `[accountId, reportingMonth, acquirerId]` |
+| Opportunity | Salesforce Opportunity ID (stored via `id` field) |
 
-Re-running the script against the same file is safe — existing records will be skipped or updated depending on the upsert strategy chosen in `parseExcel.ts`.
+Re-running with the same file will update existing records with the latest values — no duplicates will be created.
+
+---
+
+## Troubleshooting
+
+| Issue | Likely cause | Fix |
+|---|---|---|
+| `File not found` | Wrong `--file` path | Check the path relative to the monorepo root |
+| `No account found for alias: X` | Accounts not yet ingested, or alias mismatch | Ingest Users → Accounts first; check for trailing spaces in the sheet |
+| `Could not parse month: X` | Unexpected date format | Ensure the Month column is formatted as "YYYY-MM" or a recognisable date |
+| Prisma `P2003` foreign key error | Referenced entity doesn't exist | Run ingestion in order: Users → Accounts → Financials/VAMP/Opportunities |

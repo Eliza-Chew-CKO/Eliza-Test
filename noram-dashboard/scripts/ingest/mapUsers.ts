@@ -3,64 +3,81 @@
  *
  * Maps rows from the "NORAM Users - AW" Excel sheet to Prisma UserCreateInput objects.
  *
- * Expected sheet columns (case-insensitive matching):
- *   Name         — full name of the sales rep or account manager
- *   Email        — work email address (must be unique)
- *   Role         — e.g. "AE", "AM", "Sales Manager", "VP Sales"
- *   Sales Region — e.g. "US-East", "US-West", "US-Central", "Canada"
+ * Expected sheet columns (case-insensitive match attempted):
+ *   - "Name"         → user.name
+ *   - "Email"        → user.email  (used as unique key for upsert)
+ *   - "Role"         → user.role   (e.g. "AE", "AM", "Manager")
+ *   - "Region"       → user.salesRegion
  *
  * Notes:
- *   - Rows with missing Email are skipped (email is the natural key).
- *   - Name is trimmed; Role defaults to "AE" if blank.
- *   - The sheet may include both AEs (Account Executives) and AMs (Account Managers).
+ * - Rows with missing email or name are skipped with a warning.
+ * - Email is lowercased and trimmed for deduplication.
+ * - Role values are normalised: "Account Executive" → "AE", "Account Manager" → "AM".
  */
 
-// TODO: import type { Prisma } from '@noram/db';
-// Using a local type alias until the package is installed
-type UserCreateInput = {
-  id?: string;
-  name: string;
-  email: string;
-  role: string;
-  salesRegion: string;
-};
+import type { Prisma } from '@prisma/client';
+import type { SheetRow } from './parseExcel';
 
-// ─── Column name constants ────────────────────────────────────────────────────
+// ─── Expected column name constants ──────────────────────────────────────────
+// Adjust these if the source Excel uses different column headers.
 const COL_NAME   = 'Name';
 const COL_EMAIL  = 'Email';
 const COL_ROLE   = 'Role';
-const COL_REGION = 'Sales Region';
+const COL_REGION = 'Region';
 
-/**
- * Normalise a column value to a trimmed string, returning '' if absent.
- */
-function str(row: Record<string, unknown>, col: string): string {
-  const val = row[col];
-  return typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+// ─── Role normalisation map ───────────────────────────────────────────────────
+const ROLE_MAP: Record<string, string> = {
+  'account executive':   'AE',
+  'ae':                  'AE',
+  'account manager':     'AM',
+  'am':                  'AM',
+  'manager':             'Manager',
+  'sales manager':       'Manager',
+  'admin':               'Admin',
+  'administrator':       'Admin',
+};
+
+function normaliseRole(raw: string | null | undefined): string {
+  if (!raw) return 'AE';
+  const lower = raw.toString().toLowerCase().trim();
+  return ROLE_MAP[lower] ?? raw.toString().trim();
 }
 
+// ─── Mapper ───────────────────────────────────────────────────────────────────
+
 /**
- * mapUsers
+ * Maps raw sheet rows to Prisma UserCreateInput objects.
  *
- * @param rows  Raw row objects from XLSX.utils.sheet_to_json
- * @returns     Array of Prisma UserCreateInput objects ready for upsert
+ * @param rows - Array of plain objects from XLSX.utils.sheet_to_json
+ * @returns Array of UserCreateInput ready for prisma.user.upsert()
  */
-export function mapUsers(rows: Record<string, unknown>[]): UserCreateInput[] {
-  const results: UserCreateInput[] = [];
+export function mapUsers(rows: SheetRow[]): Prisma.UserCreateInput[] {
+  const mapped: Prisma.UserCreateInput[] = [];
 
   for (const row of rows) {
-    const email = str(row, COL_EMAIL).toLowerCase();
-    if (!email) {
-      // Skip rows without a valid email
+    const name  = row[COL_NAME]?.toString().trim();
+    const email = row[COL_EMAIL]?.toString().trim().toLowerCase();
+    const role  = normaliseRole(row[COL_ROLE]);
+    const region = row[COL_REGION]?.toString().trim() ?? 'NORAM';
+
+    if (!name || !email) {
+      console.warn('[mapUsers] Skipping row with missing name or email:', row);
       continue;
     }
 
-    const name   = str(row, COL_NAME)   || 'Unknown';
-    const role   = str(row, COL_ROLE)   || 'AE';
-    const region = str(row, COL_REGION) || 'NORAM';
+    // Basic email format guard
+    if (!email.includes('@')) {
+      console.warn(`[mapUsers] Skipping row — invalid email: "${email}"`);
+      continue;
+    }
 
-    results.push({ name, email, role, salesRegion: region });
+    mapped.push({
+      name,
+      email,
+      role,
+      salesRegion: region,
+    });
   }
 
-  return results;
+  return mapped;
 }

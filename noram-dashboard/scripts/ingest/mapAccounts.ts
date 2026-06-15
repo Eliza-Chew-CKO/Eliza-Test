@@ -1,119 +1,96 @@
 /**
  * mapAccounts.ts
  *
- * Maps rows from the "Data" sheet to Prisma AccountCreateInput objects.
+ * Maps account-level rows (typically from the "Data" sheet) to Prisma
+ * AccountCreateInput objects.
  *
- * Accounts are not stored in a dedicated sheet; they are inferred from the
- * account/alias columns in the "Data" revenue sheet.
+ * Accounts are not an explicit sheet — they are inferred from the account
+ * alias column in the "Data" sheet. Deduplication is handled by the upsert
+ * logic in parseExcel.ts (upsert on alias).
  *
- * Expected columns from "Data":
- *   Account Alias      — display name / internal alias
- *   Tier               — account tier: "Enterprise" | "Mid-Market" | "SMB"
- *   Managed            — "Y" / "N" / true / false indicating account management status
- *   Sales Rep          — name or ID of the owning AE
- *   Account Manager    — name or ID of the AM (optional)
- *   Go Live Date       — date the account went live on Checkout.com
- *   Region             — geographic region
- *   Referral Partner   — referring partner name (optional)
- *   Sector             — merchant industry sector (optional)
+ * Column mapping (from "Data" sheet):
+ *   Account / Alias     → alias
+ *   Tier                → tier (with inference if missing)
+ *   Managed (Y/N)       → isManaged (boolean)
+ *   Go-Live Date        → goLiveDate
+ *   Region              → region
+ *   Referral Partner    → referralPartner
+ *   Sector / Vertical   → sector
+ *   Sales Rep           → salesRepId (resolved via user lookup by name/email)
+ *   Account Manager     → accountManagerId
  */
 
-export interface AccountCreateInput {
+type AccountCreateInput = {
   alias: string;
   tier: string;
   isManaged: boolean;
   salesRepId: string;
-  accountManagerId?: string | null;
-  goLiveDate?: Date | null;
+  accountManagerId?: string;
+  goLiveDate?: Date;
   region: string;
-  referralPartner?: string | null;
-  sector?: string | null;
+  referralPartner?: string;
+  sector?: string;
+};
+
+function str(row: Record<string, unknown>, col: string): string {
+  const val = row[col];
+  return typeof val === 'string' ? val.trim() : String(val ?? '').trim();
 }
 
-// ─── Tier inference ────────────────────────────────────────────────────────────
+/**
+ * Infer account tier from alias, revenue signals, or explicit column.
+ * Priority: explicit column value > revenue heuristic > default 'SMB'
+ */
+function inferTier(row: Record<string, unknown>): string {
+  const explicit = str(row, 'Tier');
+  if (['Enterprise', 'Mid-Market', 'SMB'].includes(explicit)) return explicit;
 
-const TIER_KEYWORDS: Array<{ keywords: string[]; tier: string }> = [
-  { keywords: ['enterprise', 'ent'],           tier: 'Enterprise' },
-  { keywords: ['mid-market', 'mid market', 'mm'], tier: 'Mid-Market' },
-  { keywords: ['smb', 'small'],                 tier: 'SMB' },
-];
-
-function inferTier(raw: string): string {
-  const lower = raw.toLowerCase().trim();
-  for (const { keywords, tier } of TIER_KEYWORDS) {
-    if (keywords.some((k) => lower.includes(k))) return tier;
+  // Heuristic: high-value accounts tagged as Enterprise
+  const revenueStr = str(row, 'Net Revenue') || str(row, 'Total Fees');
+  const revenue = parseFloat(revenueStr.replace(/[^0-9.-]/g, ''));
+  if (!isNaN(revenue)) {
+    if (revenue >= 50_000) return 'Enterprise';
+    if (revenue >= 10_000) return 'Mid-Market';
   }
-  // Default to Mid-Market if unrecognised
-  console.warn(`[mapAccounts] Unrecognised tier "${raw}" — defaulting to Mid-Market`);
-  return 'Mid-Market';
+
+  return 'SMB';
 }
 
-// ─── Date parsing ──────────────────────────────────────────────────────────────
-
-function parseDate(raw: unknown): Date | null {
-  if (!raw) return null;
-  const str = String(raw).trim();
-  if (!str) return null;
-  const d = new Date(str);
-  return isNaN(d.getTime()) ? null : d;
+function parseDate(val: unknown): Date | undefined {
+  if (!val) return undefined;
+  const d = new Date(String(val));
+  return isNaN(d.getTime()) ? undefined : d;
 }
 
-// ─── Boolean parsing ───────────────────────────────────────────────────────────
-
-function parseBool(raw: unknown): boolean {
-  if (typeof raw === 'boolean') return raw;
-  const str = String(raw).toLowerCase().trim();
-  return str === 'y' || str === 'yes' || str === 'true' || str === '1';
+function parseBoolean(val: unknown): boolean {
+  const s = String(val ?? '').trim().toLowerCase();
+  return s === 'y' || s === 'yes' || s === 'true' || s === '1';
 }
-
-// ─── Column helpers ────────────────────────────────────────────────────────────
-
-function get(row: Record<string, unknown>, ...keys: string[]): string {
-  for (const key of keys) {
-    const val = row[key] ??
-      Object.entries(row).find(([k]) => k.trim().toLowerCase() === key.toLowerCase())?.[1];
-    if (val != null) return String(val).trim();
-  }
-  return '';
-}
-
-// ─── Deduplication ────────────────────────────────────────────────────────────
 
 /**
  * mapAccounts
  *
- * Extracts unique accounts from "Data" sheet rows.
- * Deduplicates by alias — last seen row wins for mutable fields.
+ * Deduplicates by alias (last row wins for a given alias).
+ * salesRepId is set to a placeholder — in production, resolve via a
+ * name→id lookup against the users already upserted from "NORAM Users - AW".
  */
 export function mapAccounts(rows: Record<string, unknown>[]): AccountCreateInput[] {
   const seen = new Map<string, AccountCreateInput>();
 
   for (const row of rows) {
-    const alias = get(row, 'Account Alias', 'Account', 'Alias');
-    if (!alias) {
-      console.warn('[mapAccounts] Skipping row with no account alias');
-      continue;
-    }
-
-    const tierRaw     = get(row, 'Tier', 'Account Tier');
-    const managedRaw  = row['Managed'] ?? row['Is Managed'] ?? 'N';
-    const salesRep    = get(row, 'Sales Rep', 'Sales Rep ID', 'AE');
-    const acctManager = get(row, 'Account Manager', 'AM', 'Account Manager ID') || null;
-    const goLiveRaw   = row['Go Live Date'] ?? row['Go-Live Date'];
-    const region      = get(row, 'Region', 'Sales Region');
-    const partner     = get(row, 'Referral Partner', 'Partner') || null;
-    const sector      = get(row, 'Sector', 'Industry') || null;
+    const alias = str(row, 'Account') || str(row, 'Alias') || str(row, 'Account Name');
+    if (!alias) continue;
 
     seen.set(alias, {
       alias,
-      tier:            inferTier(tierRaw || 'Mid-Market'),
-      isManaged:       parseBool(managedRaw),
-      salesRepId:      salesRep,
-      accountManagerId: acctManager,
-      goLiveDate:      parseDate(goLiveRaw),
-      region:          region || 'NORAM',
-      referralPartner: partner,
-      sector,
+      tier: inferTier(row),
+      isManaged: parseBoolean(row['Managed']),
+      salesRepId: str(row, 'Sales Rep') || str(row, 'Rep') || 'UNKNOWN',
+      accountManagerId: str(row, 'Account Manager') || undefined,
+      goLiveDate: parseDate(row['Go-Live Date'] ?? row['Go Live Date']),
+      region: str(row, 'Region') || 'NORAM',
+      referralPartner: str(row, 'Referral Partner') || undefined,
+      sector: str(row, 'Sector') || str(row, 'Vertical') || undefined,
     });
   }
 

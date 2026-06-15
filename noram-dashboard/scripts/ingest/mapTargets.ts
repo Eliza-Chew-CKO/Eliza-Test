@@ -1,144 +1,158 @@
 /**
  * mapTargets.ts
  *
- * Maps rows from the "Targets" sheet to Target records in the database.
+ * Maps rows from the "Targets" Excel sheet to Prisma TargetCreateInput objects.
  *
  * Expected sheet columns:
- *   Period      — reporting period as "YYYY-MM" (e.g. "2026-01")
- *   Type        — target type string, mapped to TargetType enum values:
- *                   "Frontbook Base"      → FRONTBOOK_BASE
- *                   "Frontbook Roll"      → FRONTBOOK_ROLL
- *                   "Backbook Managed"    → BACKBOOK_MANAGED
- *                   "Backbook Unmanaged"  → BACKBOOK_UNMANAGED
- *                   "TPV"                 → TPV
- *   Amount      — target monetary value (number or string with $ / commas)
- *   GoLiveCount — (optional) target number of go-lives (used with FRONTBOOK_BASE)
+ *   Period            — reporting period, e.g. "2025-06" or "Jun-25" or "Jun 2025"
+ *   Type              — target type: see TargetType enum
+ *   Amount / Target   — monetary target value (USD)
+ *   Go-Live Count     — target number of new go-lives (optional, only for FRONTBOOK_BASE)
  *
- * The @@unique([period, type]) constraint means re-running this script is safe;
- * existing targets for a period will be updated with the latest values.
+ * Supported Type column values (case-insensitive):
+ *   "Frontbook Base"  / "FB Base"  → FRONTBOOK_BASE
+ *   "Frontbook Roll"  / "FB Roll"  → FRONTBOOK_ROLL
+ *   "Backbook Managed"             → BACKBOOK_MANAGED
+ *   "Backbook Unmanaged"           → BACKBOOK_UNMANAGED
+ *   "TPV"                          → TPV
  */
 
-// ─── Column name constants ─────────────────────────────────────────────────────
-const COL_PERIOD = 'Period';
-const COL_TYPE = 'Type';
-const COL_AMOUNT = 'Amount';
-const COL_GO_LIVE_COUNT = 'GoLiveCount';
-
-// ─── Target type normalisation ─────────────────────────────────────────────────
-type TargetTypeKey =
+export type TargetType =
   | 'FRONTBOOK_BASE'
   | 'FRONTBOOK_ROLL'
   | 'BACKBOOK_MANAGED'
   | 'BACKBOOK_UNMANAGED'
   | 'TPV';
 
-const TARGET_TYPE_MAP: Record<string, TargetTypeKey> = {
+export interface TargetCreateInput {
+  period: string;      // "YYYY-MM"
+  type: TargetType;
+  amount: number;
+  goLiveCount: number | null;
+}
+
+// ─── Type normalisation ────────────────────────────────────────────────────────
+
+const TYPE_MAP: Record<string, TargetType> = {
   'frontbook base':    'FRONTBOOK_BASE',
+  'fb base':           'FRONTBOOK_BASE',
   'frontbook_base':    'FRONTBOOK_BASE',
-  'base':              'FRONTBOOK_BASE',
   'frontbook roll':    'FRONTBOOK_ROLL',
+  'fb roll':           'FRONTBOOK_ROLL',
   'frontbook_roll':    'FRONTBOOK_ROLL',
-  'roll':              'FRONTBOOK_ROLL',
   'backbook managed':  'BACKBOOK_MANAGED',
   'backbook_managed':  'BACKBOOK_MANAGED',
-  'managed':           'BACKBOOK_MANAGED',
+  'managed backbook':  'BACKBOOK_MANAGED',
   'backbook unmanaged':'BACKBOOK_UNMANAGED',
   'backbook_unmanaged':'BACKBOOK_UNMANAGED',
-  'unmanaged':         'BACKBOOK_UNMANAGED',
+  'unmanaged backbook':'BACKBOOK_UNMANAGED',
   'tpv':               'TPV',
   'total payment volume': 'TPV',
 };
 
-function normaliseTargetType(raw: string): TargetTypeKey | null {
-  const key = raw.trim().toLowerCase();
-  return TARGET_TYPE_MAP[key] ?? null;
+function normaliseType(raw: string): TargetType | null {
+  const mapped = TYPE_MAP[raw.toLowerCase().trim()];
+  if (!mapped) {
+    console.warn(`[mapTargets] Unknown target type "${raw}" — skipping row`);
+    return null;
+  }
+  return mapped;
 }
 
-function parseCurrency(value: unknown): number {
-  if (value === null || value === undefined || value === '') return 0;
-  const num = parseFloat(String(value).replace(/[$,\s]/g, ''));
-  return isNaN(num) ? 0 : num;
-}
+// ─── Period parsing ────────────────────────────────────────────────────────────
 
 /**
- * Normalise a period value to "YYYY-MM" string.
- * Accepts: "2026-01", "Jan 2026", "January 2026", Excel serial date.
+ * Parses various period formats to "YYYY-MM" string.
+ * Handles: "2025-06", "Jun-25", "Jun 2025", "01/06/2025", Excel serials.
  */
-function normalisePeriod(value: unknown): string | null {
-  if (!value) return null;
-  const str = String(value).trim();
+function parsePeriod(raw: unknown): string | null {
+  if (!raw) return null;
+
+  if (typeof raw === 'number') {
+    // Excel serial date
+    const date = new Date((raw - 25569) * 86400 * 1000);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+
+  const str = String(raw).trim();
 
   // Already "YYYY-MM"
   if (/^\d{4}-\d{2}$/.test(str)) return str;
 
-  // Try to parse as date and extract year/month
-  const asNum = Number(str);
-  let d: Date;
-  if (!isNaN(asNum) && asNum > 40_000) {
-    d = new Date((asNum - 25569) * 86400 * 1000);
-  } else {
-    d = new Date(str);
+  // "YYYY-MM-DD" — take first 7 chars
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str.slice(0, 7);
+
+  // "Mon-YY" e.g. "Jun-25"
+  const shortMatch = str.match(/^([A-Za-z]{3})-(\d{2})$/);
+  if (shortMatch) {
+    const year = 2000 + parseInt(shortMatch[2]);
+    const d    = new Date(`${shortMatch[1]} 1, ${year}`);
+    if (!isNaN(d.getTime())) {
+      return `${year}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
   }
 
-  if (!isNaN(d.getTime())) {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}`;
+  // "Mon YYYY"
+  const longMatch = str.match(/^([A-Za-z]{3})\s+(\d{4})$/);
+  if (longMatch) {
+    const d = new Date(`${longMatch[1]} 1, ${longMatch[2]}`);
+    if (!isNaN(d.getTime())) {
+      return `${longMatch[2]}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
   }
 
+  console.warn(`[mapTargets] Could not parse period "${str}"`);
   return null;
 }
 
-export interface TargetRow {
-  [COL_PERIOD]: unknown;
-  [COL_TYPE]: string;
-  [COL_AMOUNT]: unknown;
-  [COL_GO_LIVE_COUNT]?: unknown;
-  [key: string]: unknown;
+function parseNum(raw: unknown): number {
+  if (raw == null) return 0;
+  const n = parseFloat(String(raw).replace(/[,$%\s]/g, ''));
+  return isNaN(n) ? 0 : n;
 }
+
+function parseInt_(raw: unknown): number | null {
+  if (raw == null) return null;
+  const n = parseInt(String(raw), 10);
+  return isNaN(n) ? null : n;
+}
+
+function get(row: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const key of keys) {
+    const val = row[key] ??
+      Object.entries(row).find(([k]) => k.trim().toLowerCase() === key.toLowerCase())?.[1];
+    if (val != null) return val;
+  }
+  return null;
+}
+
+// ─── Main mapper ──────────────────────────────────────────────────────────────
 
 /**
  * mapTargets
  *
- * Upserts Target records from the "Targets" sheet.
- * Uses the Prisma client passed in to support use from the main parseExcel script.
- *
- * @param rows   — raw Excel rows
- * @param prisma — PrismaClient instance
+ * Maps raw rows to TargetCreateInput.
+ * Rows with unrecognised type or unparseable period are skipped.
  */
-export async function mapTargets(rows: TargetRow[], prismaClient: any): Promise<void> {
-  let upserted = 0;
-  let skipped = 0;
+export function mapTargets(rows: Record<string, unknown>[]): TargetCreateInput[] {
+  const results: TargetCreateInput[] = [];
 
   for (const row of rows) {
-    const period = normalisePeriod(row[COL_PERIOD]);
-    if (!period) {
-      console.warn(`[mapTargets] Could not parse period:`, row[COL_PERIOD]);
-      skipped++;
-      continue;
-    }
+    const periodRaw = get(row, 'Period', 'Month', 'Date');
+    const period    = parsePeriod(periodRaw);
+    if (!period) continue;
 
-    const type = normaliseTargetType(String(row[COL_TYPE] ?? ''));
-    if (!type) {
-      console.warn(`[mapTargets] Unrecognised target type: "${row[COL_TYPE]}"`);
-      skipped++;
-      continue;
-    }
+    const typeRaw = String(get(row, 'Type', 'Target Type', 'Category') ?? '').trim();
+    const type    = normaliseType(typeRaw);
+    if (!type) continue;
 
-    const amount = parseCurrency(row[COL_AMOUNT]);
-    const goLiveCount =
-      row[COL_GO_LIVE_COUNT] !== null && row[COL_GO_LIVE_COUNT] !== undefined
-        ? parseInt(String(row[COL_GO_LIVE_COUNT]), 10) || null
-        : null;
+    const amount     = parseNum(get(row, 'Amount', 'Target', 'Target Amount', 'Value'));
+    const goLiveCount = parseInt_(get(row, 'Go-Live Count', 'Go Live Count', 'Go Lives', 'Count'));
 
-    await prismaClient.target.upsert({
-      where: { period_type: { period, type } },
-      create: { period, type, amount, goLiveCount },
-      update: { amount, goLiveCount },
-    });
-
-    upserted++;
+    results.push({ period, type, amount, goLiveCount });
   }
 
-  console.log(`[mapTargets] Upserted ${upserted} targets, skipped ${skipped}.`);
+  return results;
 }
