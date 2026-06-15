@@ -50,7 +50,7 @@ enum UserRole {
 
 model Account {
   id              String    @id @default(cuid())
-  salesforceId    String    @unique // 18-digit SF Account ID
+  salesforceId    String?   @unique // 18-digit SF Account ID (nullable — not all aliases have one)
   alias           String    @unique
   accountName     String?
   tier            Tier?

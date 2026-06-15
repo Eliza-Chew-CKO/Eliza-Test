@@ -111,15 +111,18 @@ export async function mapAccounts(
       await prisma.account.upsert({
         where: { alias: acct.alias },
         create: {
-          salesforceId: acct.sfId || `NOID-${acct.alias}`,
+          // Only set salesforceId when we have a real 18-digit SF ID.
+          // Leaving it undefined avoids unique constraint collisions when
+          // multiple aliases share the same SF account or have no ID at all.
+          salesforceId: acct.sfId || undefined,
           alias: acct.alias,
           tier: acct.tier as any ?? undefined,
-          rating: acct.rating,
+          rating: acct.rating || undefined,
           isManaged: acct.isManaged,
-          salesRepId: salesRep?.id ?? null,
-          accountManagerId: accountManager?.id ?? null,
-          goLiveDate: acct.goLiveDate,
-          pod: acct.pod || null,
+          salesRepId: salesRep?.id ?? undefined,
+          accountManagerId: accountManager?.id ?? undefined,
+          goLiveDate: acct.goLiveDate ?? undefined,
+          pod: acct.pod || undefined,
         },
         update: {
           salesforceId: acct.sfId || undefined,
