@@ -1,160 +1,112 @@
 /**
  * mapVAMP.ts
  *
- * Maps rows from the "Excessive VAMP" Excel sheet to
- * Prisma VampRecordCreateInput objects.
+ * Maps rows from the "Excessive VAMP" sheet to Prisma VampRecordCreateInput objects.
  *
- * VAMP = Visa Acquirer Monitoring Programme
- * Accounts with excessive VAMP ratios risk fines from acquiring banks.
+ * VAMP (Visa Acquirer Monitoring Programme) records capture fraud event data
+ * used to track whether an account is at risk of scheme penalties.
  *
  * Expected sheet columns:
- *   Account / Account Alias  — account identifier
- *   Month / Reporting Month  — reporting period
- *   Created Events           — total authorisation events created
- *   Fraud Events             — confirmed fraud events
- *   Total Captured Events    — total captured (settled) events
- *   VAMP Ratio               — fraud events / total captured events (may need calculation)
- *   VAMP Type                — "Fraud" | "TC40"
- *   VAMP Assessment          — "Normal" | "Excessive" (optional — derived if absent)
- *   Acquirer Country         — 2-letter ISO country code (optional)
- *   Acquirer ID              — acquirer identifier (optional)
+ *   Account / Alias       — account alias (foreign key)
+ *   Reporting Month       — month of the record
+ *   Created Events        — total authorised/captured events
+ *   Fraud Events          — number of fraud-confirmed events
+ *   Total Captured Events — total captured transaction count (may differ from Created)
+ *   VAMP Ratio            — pre-computed ratio; if absent, computed as fraudEvents / totalCapturedEvents
+ *   VAMP Type             — "VISA_VAMP" | "MC_MATCH" | etc.
+ *   Assessment            — acquirer's assessment label (e.g. "Excessive", "At Risk")
+ *   Acquirer Country      — ISO country code of the acquiring bank
+ *   Acquirer ID           — acquirer identifier
+ *
+ * Classification thresholds (apply if vampAssessment is not provided):
+ *   ratio < 0.005          → "Healthy"
+ *   0.005 ≤ ratio < 0.010  → "At Risk"
+ *   ratio ≥ 0.010          → "Excessive"
  */
 
-export interface VampRecordCreateInput {
-  accountId: string;
+type VampRecordCreateInput = {
+  accountId: string;           // alias placeholder — resolve after account upsert
   reportingMonth: Date;
   createdEvents: number;
   fraudEvents: number;
   totalCapturedEvents: number;
   vampRatio: number;
   vampType: string;
-  vampAssessment: string | null;
-  acquirerCountry: string | null;
-  acquirerId: string | null;
-}
+  vampAssessment?: string;
+  acquirerCountry?: string;
+  acquirerId?: string;
+};
 
-// VAMP threshold constants (Visa standard)
-const FRAUD_VAMP_THRESHOLD = 0.009;
-const TC40_VAMP_THRESHOLD  = 0.005;
-
-// ─── Assessment classification ────────────────────────────────────────────────
-
-function classifyAssessment(vampRatio: number, vampType: string): string {
-  const threshold =
-    vampType.toLowerCase() === 'tc40'
-      ? TC40_VAMP_THRESHOLD
-      : FRAUD_VAMP_THRESHOLD;
-  return vampRatio > threshold ? 'Excessive' : 'Normal';
-}
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
-function parseNum(raw: unknown): number {
-  if (raw == null) return 0;
-  const n = parseFloat(String(raw).replace(/[,$%\s]/g, ''));
+function parseAmount(val: unknown): number {
+  const n = parseFloat(String(val ?? '0').replace(/[^0-9.-]/g, ''));
   return isNaN(n) ? 0 : n;
 }
 
-function parseInt_(raw: unknown): number {
-  if (raw == null) return 0;
-  const n = parseInt(String(raw).replace(/[,$\s]/g, ''), 10);
+function parseInt10(val: unknown): number {
+  const n = parseInt(String(val ?? '0').replace(/[^0-9]/g, ''), 10);
   return isNaN(n) ? 0 : n;
 }
 
-function parseDate(raw: unknown): Date | null {
-  if (!raw) return null;
-  if (typeof raw === 'number') {
-    const d = new Date((raw - 25569) * 86400 * 1000);
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+function parseReportingMonth(val: unknown): Date | undefined {
+  if (!val) return undefined;
+  if (val instanceof Date) {
+    return new Date(Date.UTC(val.getFullYear(), val.getMonth(), 1));
   }
-  const str = String(raw).trim();
-  // "YYYY-MM" or "YYYY-MM-DD"
-  const isoMatch = str.match(/^(\d{4})-(\d{2})/);
-  if (isoMatch) return new Date(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, 1);
-  // "Mon-YY" e.g. "Jun-25"
-  const shortMatch = str.match(/^([A-Za-z]{3})-(\d{2})$/);
+  const s = String(val).trim();
+  const shortMatch = s.match(/^([A-Za-z]{3})[-\s](\d{2})$/);
   if (shortMatch) {
-    const d = new Date(`${shortMatch[1]} 1, ${2000 + parseInt(shortMatch[2])}`);
-    return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), 1);
+    const d = new Date(`${shortMatch[1]} 20${shortMatch[2]}`);
+    if (!isNaN(d.getTime())) return new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1));
   }
-  const d = new Date(str);
-  return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), 1);
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1));
+  return undefined;
 }
 
-function get(row: Record<string, unknown>, ...keys: string[]): unknown {
-  for (const key of keys) {
-    const val = row[key] ??
-      Object.entries(row).find(([k]) => k.trim().toLowerCase() === key.toLowerCase())?.[1];
-    if (val != null) return val;
-  }
-  return null;
+/**
+ * classifyVampRatio
+ * Returns a human-readable assessment based on the VAMP ratio value.
+ */
+function classifyVampRatio(ratio: number): string {
+  if (ratio >= 0.01)  return 'Excessive';
+  if (ratio >= 0.005) return 'At Risk';
+  return 'Healthy';
 }
-
-// ─── Main mapper ──────────────────────────────────────────────────────────────
 
 /**
  * mapVAMP
- *
- * Maps raw rows to VampRecordCreateInput.
- *
- * VAMP ratio is calculated from fraudEvents / totalCapturedEvents if not
- * explicitly provided in the sheet. Assessment is derived from ratio + type
- * if the Assessment column is absent.
- *
- * Rows with missing accountId or reportingMonth are skipped.
  */
 export function mapVAMP(rows: Record<string, unknown>[]): VampRecordCreateInput[] {
   const results: VampRecordCreateInput[] = [];
 
   for (const row of rows) {
-    const accountId = String(
-      get(row, 'Account Alias', 'Account', 'Alias', 'Account ID') ?? ''
-    ).trim();
+    const alias = String(row['Account'] ?? row['Alias'] ?? row['Account Name'] ?? '').trim();
+    if (!alias) continue;
 
-    if (!accountId) {
-      console.warn('[mapVAMP] Skipping row with no account identifier');
-      continue;
-    }
+    const reportingMonth = parseReportingMonth(row['Reporting Month'] ?? row['Month']);
+    if (!reportingMonth) continue;
 
-    const reportingMonth = parseDate(
-      get(row, 'Month', 'Reporting Month', 'Date', 'Period')
+    const createdEvents       = parseInt10(row['Created Events'] ?? row['Authorised Events']);
+    const fraudEvents         = parseInt10(row['Fraud Events'] ?? row['Chargebacks']);
+    const totalCapturedEvents = parseInt10(
+      row['Total Captured Events'] ?? row['Captured Events'] ?? createdEvents
     );
-    if (!reportingMonth) {
-      console.warn(`[mapVAMP] Skipping row with unparseable month for account "${accountId}"`);
-      continue;
-    }
 
-    const createdEvents       = parseInt_(get(row, 'Created Events', 'Auth Events', 'Transactions'));
-    const fraudEvents         = parseInt_(get(row, 'Fraud Events',   'Fraud',       'Fraud Count'));
-    const totalCapturedEvents = parseInt_(get(row, 'Total Captured Events', 'Captured Events', 'Settled Events', 'Total Events'));
-
-    // Calculate VAMP ratio if not explicitly provided
-    const vampRatioRaw = get(row, 'VAMP Ratio', 'Ratio', 'VAMP %');
-    let vampRatio: number;
-    if (vampRatioRaw != null) {
-      vampRatio = parseNum(vampRatioRaw);
-      // Handle percentage values > 1 (e.g. "0.93%" stored as "0.93" not "0.0093")
-      if (vampRatio > 1) vampRatio = vampRatio / 100;
-    } else if (totalCapturedEvents > 0) {
+    // Use pre-computed ratio if present; otherwise calculate
+    let vampRatio = parseAmount(row['VAMP Ratio'] ?? row['Ratio']);
+    if (vampRatio === 0 && totalCapturedEvents > 0) {
       vampRatio = fraudEvents / totalCapturedEvents;
-    } else {
-      vampRatio = 0;
     }
 
-    const vampType = String(
-      get(row, 'VAMP Type', 'Type', 'Fraud Type') ?? 'Fraud'
-    ).trim();
+    const vampType = String(row['VAMP Type'] ?? row['Type'] ?? 'VISA_VAMP').trim();
+    const rawAssessment = String(row['Assessment'] ?? row['VAMP Assessment'] ?? '').trim();
+    const vampAssessment = rawAssessment || classifyVampRatio(vampRatio);
 
-    const assessmentRaw = String(
-      get(row, 'VAMP Assessment', 'Assessment', 'Status') ?? ''
-    ).trim();
-    const vampAssessment = assessmentRaw || classifyAssessment(vampRatio, vampType);
-
-    const acquirerCountry = String(get(row, 'Acquirer Country', 'Country', 'ACQ Country') ?? '').trim() || null;
-    const acquirerId      = String(get(row, 'Acquirer ID', 'Acquirer', 'ACQ ID') ?? '').trim() || null;
+    const acquirerCountry = String(row['Acquirer Country'] ?? '').trim() || undefined;
+    const acquirerId      = String(row['Acquirer ID'] ?? row['Acquirer'] ?? '').trim() || undefined;
 
     results.push({
-      accountId,
+      accountId: alias,
       reportingMonth,
       createdEvents,
       fraudEvents,
