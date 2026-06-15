@@ -1,12 +1,62 @@
+# Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+
+# Production build outputs
+dist/
+*.js.map
+
+# Environment variables - never commit secrets
 .env
 .env.local
-.next/
-dist/
-build/
-*.tsbuildinfo
-.DS_Store
-coverage/
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+logs/
+
+# Prisma - keep schema, ignore generated client and migrations
+# prisma/schema.prisma is tracked
 prisma/migrations/
-data/*.xlsx
-data/*.csv
+# If using generated client inside packages/db, ignore it
+packages/db/node_modules/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Turbo cache
+.turbo/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

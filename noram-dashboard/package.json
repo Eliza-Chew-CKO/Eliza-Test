@@ -1,15 +1,23 @@
 {
   "name": "noram-dashboard",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "concurrently \"pnpm --filter web dev\" \"pnpm --filter api dev\"",
-    "build": "pnpm --filter web build && pnpm --filter api build",
-    "lint": "pnpm --filter web lint"
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present && rm -rf node_modules",
+    "type-check": "npm run type-check --workspaces --if-present"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
-    "typescript": "^5.3.3"
+    "typescript": "~5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   }
 }
