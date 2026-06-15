@@ -10,7 +10,7 @@ import financialsRouter from './routes/financials';
 import pipelineRouter from './routes/pipeline';
 import backbookRouter from './routes/backbook';
 import leaderboardRouter from './routes/leaderboard';
-import targetsRouter from './routes/targets';
+import { targetsRouter } from './routes/targets';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
