@@ -3,9 +3,9 @@ const nextConfig = {
   reactStrictMode: true,
 
   // API rewrites for local development:
-  // Proxies /api/* requests to the Express server running on localhost:4000.
-  // This avoids CORS issues in development and mirrors the production setup
-  // where a reverse proxy (e.g. nginx or a cloud load balancer) routes traffic.
+  // Proxies /api/* requests from the Next.js dev server (port 3000) to the
+  // Express API server running on port 4000. In production, configure your
+  // reverse proxy (nginx / load balancer) to handle this routing instead.
   async rewrites() {
     return process.env.NODE_ENV === 'development'
       ? [
