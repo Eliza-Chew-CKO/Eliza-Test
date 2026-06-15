@@ -1,38 +1,65 @@
 'use client';
-import { useState } from 'react';
+
 import { cn } from '@/lib/utils';
-import type { DateRange, Tier } from '@/types';
+import type { DashboardFilters } from '@/types';
 
-const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
-  { label: 'MTD', value: 'MTD' },
-  { label: 'YTD', value: 'YTD' },
-  { label: 'Custom', value: 'CUSTOM' },
+interface GlobalFiltersProps {
+  filters: DashboardFilters;
+  onChange: (filters: DashboardFilters) => void;
+}
+
+const DATE_RANGE_OPTIONS: { value: DashboardFilters['dateRange']; label: string }[] = [
+  { value: 'MTD', label: 'MTD' },
+  { value: 'YTD', label: 'YTD' },
+  { value: 'CUSTOM', label: 'Custom' },
 ];
 
-const TIER_OPTIONS: { label: string; value: Tier | '' }[] = [
-  { label: 'All Tiers', value: '' },
-  { label: 'Tier 1', value: 'TIER_1' },
-  { label: 'Tier 2', value: 'TIER_2' },
-  { label: 'Tier 3', value: 'TIER_3' },
+const TIER_OPTIONS = [
+  { value: '', label: 'All Tiers' },
+  { value: 'Enterprise', label: 'Enterprise' },
+  { value: 'Mid-Market', label: 'Mid-Market' },
+  { value: 'SMB', label: 'SMB' },
 ];
 
-export default function GlobalFilters() {
-  const [dateRange, setDateRange] = useState<DateRange>('YTD');
-  const [tier, setTier] = useState<Tier | ''>('');
+// Placeholder rep options — in production these would be fetched from /api/users
+const REP_OPTIONS = [
+  { value: '', label: 'All Reps' },
+  { value: 'rep-1', label: 'Alex Johnson' },
+  { value: 'rep-2', label: 'Maria Garcia' },
+  { value: 'rep-3', label: 'James Chen' },
+  { value: 'rep-4', label: 'Sarah Williams' },
+];
+
+export default function GlobalFilters({ filters, onChange }: GlobalFiltersProps) {
+  const isCustom = filters.dateRange === 'CUSTOM';
+
+  function setDateRange(dateRange: DashboardFilters['dateRange']) {
+    onChange({
+      ...filters,
+      dateRange,
+      // Clear custom dates when switching away from CUSTOM
+      startDate: dateRange === 'CUSTOM' ? filters.startDate : undefined,
+      endDate:   dateRange === 'CUSTOM' ? filters.endDate   : undefined,
+    });
+  }
+
+  function clearFilters() {
+    onChange({ dateRange: 'MTD', repId: null, tier: null });
+  }
 
   return (
-    <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-900 rounded-xl border border-gray-800">
-      {/* Date Range Toggle */}
-      <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
+      {/* Date range toggle */}
+      <div className="flex items-center gap-1 rounded-lg bg-neutral-100 p-1">
         {DATE_RANGE_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             onClick={() => setDateRange(opt.value)}
             className={cn(
-              'px-3 py-1 rounded-md text-sm font-medium transition-colors',
-              dateRange === opt.value
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-400 hover:text-white'
+              'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+              filters.dateRange === opt.value
+                ? 'bg-white text-neutral-900 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-700',
             )}
           >
             {opt.label}
@@ -40,22 +67,63 @@ export default function GlobalFilters() {
         ))}
       </div>
 
-      {/* Owner / Rep */}
-      <select className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-blue-500">
-        <option value="">All Owners</option>
-        {/* Populated from API */}
-      </select>
+      {/* Custom date pickers — visible only when CUSTOM is selected */}
+      {isCustom && (
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={filters.startDate ?? ''}
+            onChange={(e) => onChange({ ...filters, startDate: e.target.value })}
+            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+          <span className="text-xs text-neutral-400">to</span>
+          <input
+            type="date"
+            value={filters.endDate ?? ''}
+            onChange={(e) => onChange({ ...filters, endDate: e.target.value })}
+            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+      )}
 
-      {/* Tier / Segment */}
+      {/* Rep / Owner select */}
       <select
-        value={tier}
-        onChange={(e) => setTier(e.target.value as Tier | '')}
-        className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:border-blue-500"
+        value={filters.repId ?? ''}
+        onChange={(e) => onChange({ ...filters, repId: e.target.value || null })}
+        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
       >
-        {TIER_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        {REP_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
         ))}
       </select>
+
+      {/* Tier select */}
+      <select
+        value={filters.tier ?? ''}
+        onChange={(e) => onChange({ ...filters, tier: e.target.value || null })}
+        className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+      >
+        {TIER_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+
+      {/* Clear filters */}
+      {(filters.repId || filters.tier || isCustom) && (
+        <button
+          onClick={clearFilters}
+          className="ml-auto flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 transition-colors"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Clear
+        </button>
+      )}
     </div>
   );
 }
