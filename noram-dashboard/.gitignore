@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.local
+.next/
+dist/
+build/
+*.tsbuildinfo
+.DS_Store
+coverage/
+prisma/migrations/
+data/*.xlsx
+data/*.csv
