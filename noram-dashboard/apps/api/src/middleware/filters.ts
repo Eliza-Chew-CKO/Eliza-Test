@@ -1,7 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
 
-// ─── Extend Express Request to carry parsed filters ───────────────────────────
-
 declare global {
   namespace Express {
     interface Request {
@@ -14,100 +12,69 @@ export type DateRange = 'MTD' | 'YTD' | 'CUSTOM';
 
 export interface DashboardFilters {
   dateRange: DateRange;
-  startDate?: Date;
-  endDate?: Date;
-  repId?: string;
-  tier?: string;
+  startDate: Date;
+  endDate: Date;
+  repName?: string;   // match against salesRepName strings in DB
+  tier?: string;      // TIER_1 | TIER_2 | TIER_3
 }
 
 const VALID_DATE_RANGES: DateRange[] = ['MTD', 'YTD', 'CUSTOM'];
-const VALID_TIERS = ['Enterprise', 'Mid-Market', 'SMB'];
 
-/**
- * Parses and validates dashboard filter query params from the request URL.
- * Attaches a typed `DashboardFilters` object to `req.dashboardFilters`.
- *
- * Validation rules:
- * - dateRange must be one of: MTD | YTD | CUSTOM (defaults to MTD if omitted)
- * - When dateRange = CUSTOM, startDate and endDate must be valid ISO date strings
- * - tier must be one of: Enterprise | Mid-Market | SMB (ignored if unknown value provided)
- * - repId is passed through as a string without validation (looked up against DB at query time)
- *
- * Usage:
- *   router.get('/my-route', parseFilters, async (req, res) => {
- *     const filters = req.dashboardFilters;
- *   });
- */
+/** First day of a given month (UTC). */
+export function monthStart(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+/** First day of n months before d. */
+export function subMonths(d: Date, n: number): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - n, 1));
+}
+
+/** Last completed month start (UTC). */
+export function lastCompletedMonthStart(): Date {
+  return subMonths(new Date(), 1);
+}
+
+/** Resolve startDate/endDate from a DateRange string. */
+export function resolveDateRange(range: DateRange, start?: Date, end?: Date): { startDate: Date; endDate: Date } {
+  const now = new Date();
+  if (range === 'CUSTOM' && start && end) return { startDate: start, endDate: end };
+  if (range === 'MTD') return { startDate: monthStart(now), endDate: now };
+  // YTD default
+  return {
+    startDate: new Date(Date.UTC(now.getUTCFullYear(), 0, 1)),
+    endDate: now,
+  };
+}
+
 export function parseFilters(req: Request, res: Response, next: NextFunction): void {
   const rawDateRange = req.query.dateRange as string | undefined;
   const rawStartDate = req.query.startDate as string | undefined;
   const rawEndDate   = req.query.endDate   as string | undefined;
-  const rawRepId     = req.query.repId     as string | undefined;
+  const rawRepName   = req.query.repName   as string | undefined;
   const rawTier      = req.query.tier      as string | undefined;
 
-  // Validate dateRange
   const dateRange: DateRange =
     rawDateRange && VALID_DATE_RANGES.includes(rawDateRange as DateRange)
       ? (rawDateRange as DateRange)
-      : 'MTD';
+      : 'YTD';
 
-  // Validate custom date range
   if (dateRange === 'CUSTOM') {
     if (!rawStartDate || !rawEndDate) {
-      res.status(400).json({
-        success: false,
-        error: 'startDate and endDate are required when dateRange is CUSTOM',
-      });
+      res.status(400).json({ error: 'startDate and endDate required for CUSTOM range' });
       return;
     }
     const start = new Date(rawStartDate);
     const end   = new Date(rawEndDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      res.status(400).json({
-        success: false,
-        error: 'startDate and endDate must be valid ISO date strings',
-      });
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+      res.status(400).json({ error: 'Invalid startDate / endDate' });
       return;
     }
-    if (start > end) {
-      res.status(400).json({
-        success: false,
-        error: 'startDate must be before or equal to endDate',
-      });
-      return;
-    }
-    req.dashboardFilters = {
-      dateRange,
-      startDate: start,
-      endDate:   end,
-      repId:     rawRepId || undefined,
-      tier:      rawTier && VALID_TIERS.includes(rawTier) ? rawTier : undefined,
-    };
-    next();
-    return;
+    req.dashboardFilters = { dateRange, startDate: start, endDate: end, repName: rawRepName, tier: rawTier };
+    next(); return;
   }
 
-  // MTD / YTD — compute date bounds server-side
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date;
-
-  if (dateRange === 'YTD') {
-    startDate = new Date(now.getFullYear(), 0, 1); // 1 Jan current year
-    endDate   = now;
-  } else {
-    // MTD
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    endDate   = now;
-  }
-
-  req.dashboardFilters = {
-    dateRange,
-    startDate,
-    endDate,
-    repId: rawRepId || undefined,
-    tier:  rawTier && VALID_TIERS.includes(rawTier) ? rawTier : undefined,
-  };
-
+  const { startDate, endDate } = resolveDateRange(dateRange);
+  req.dashboardFilters = { dateRange, startDate, endDate, repName: rawRepName, tier: rawTier };
   next();
 }

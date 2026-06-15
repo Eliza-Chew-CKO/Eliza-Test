@@ -1,122 +1,322 @@
-/**
- * revenueService.ts
- *
- * Handles all revenue-related database queries. Once Prisma is wired up,
- * these functions will query the FinancialActual table (and join to Account,
- * Target, and User) to compute the KPIs and trends shown on the dashboard.
- *
- * Query strategy:
- * - MTD:    reportingMonth = current month's first day
- * - YTD:    reportingMonth >= first day of current year
- * - CUSTOM: reportingMonth >= startDate AND reportingMonth <= endDate
- *
- * All monetary values are returned as JavaScript numbers (converted from Prisma Decimal).
- */
+import { Prisma } from '@prisma/client';
+import { prisma } from '../../../packages/db/src';
+import { DashboardFilters, monthStart, subMonths, lastCompletedMonthStart } from '../middleware/filters';
 
-import type { DashboardFilters } from '../middleware/filters';
+const SOLIDGATE_FILTER = { NOT: { referralPartner: { contains: 'SOLIDGATE', mode: Prisma.QueryMode.insensitive } } };
 
-export interface KPISummary {
-  netRevenue: number;
-  netRevenueTarget: number;
-  netRevenueVariance: number;
-  netRevenueVariancePct: number;
-  frontbookMNR: number;
-  frontbookTarget: number;
-  backbookRevenue: number;
-  tpvAmount: number;
-  goLiveCount: number;
-  vampRatio: number;
-}
+// ─── Shared account where clause ──────────────────────────────────────────────
 
-export interface TrendDataPoint {
-  month: string;
-  actual: number;
-  target: number;
-  tpv: number;
-}
-
-/**
- * getKPISummary
- *
- * Real implementation would run:
- *
- *   const financials = await prisma.financialActual.aggregate({
- *     _sum: { netRevenue: true, tpvAmount: true, totalFees: true },
- *     where: buildDateWhereClause(filters),
- *   });
- *
- *   const target = await prisma.target.findFirst({
- *     where: { period: currentPeriod, type: 'BACKBOOK_MANAGED' },
- *   });
- *
- *   const goLives = await prisma.account.count({
- *     where: {
- *       goLiveDate: { gte: periodStart, lte: periodEnd },
- *       ...(filters.repId ? { salesRepId: filters.repId } : {}),
- *     },
- *   });
- */
-export async function getKPISummary(_filters: DashboardFilters): Promise<KPISummary> {
-  // TODO: replace with real Prisma aggregation queries (see JSDoc above)
+function accountWhere(tier?: string) {
   return {
-    netRevenue:           1_063_600,
-    netRevenueTarget:     1_050_000,
-    netRevenueVariance:      13_600,
-    netRevenueVariancePct:    0.013,
-    frontbookMNR:           162_500,
-    frontbookTarget:        150_000,
-    backbookRevenue:        826_900,
-    tpvAmount:        4_820_000_000,
-    goLiveCount:                  4,
-    vampRatio:               0.0072,
+    ...SOLIDGATE_FILTER,
+    ...(tier ? { tier: tier as any } : {}),
   };
 }
 
-/**
- * getFinancialTrends
- *
- * Real implementation would run one query per month in the requested range
- * (or a single query grouped by reportingMonth):
- *
- *   const results = await prisma.financialActual.groupBy({
- *     by: ['reportingMonth'],
- *     _sum: { netRevenue: true, tpvAmount: true },
- *     where: buildDateWhereClause(filters),
- *     orderBy: { reportingMonth: 'asc' },
- *   });
- *
- *   Then join with Target records to get the target per month.
- */
-export async function getFinancialTrends(_filters: DashboardFilters): Promise<TrendDataPoint[]> {
-  // TODO: replace with real Prisma groupBy query (see JSDoc above)
-  return [
-    { month: 'Jan 2025', actual:  890_000, target:  920_000, tpv: 3_900_000_000 },
-    { month: 'Feb 2025', actual:  935_000, target:  940_000, tpv: 4_100_000_000 },
-    { month: 'Mar 2025', actual:  978_000, target:  960_000, tpv: 4_300_000_000 },
-    { month: 'Apr 2025', actual: 1_010_000, target: 1_000_000, tpv: 4_550_000_000 },
-    { month: 'May 2025', actual: 1_042_000, target: 1_030_000, tpv: 4_750_000_000 },
-    { month: 'Jun 2025', actual: 1_063_600, target: 1_050_000, tpv: 4_820_000_000 },
-  ];
+// ─── KPI Summary ──────────────────────────────────────────────────────────────
+
+export interface KPIMetric {
+  value: number;
+  target: number | null;
+  variancePct: number | null;
+  varianceAbs: number | null;
+  runRate: number | null;
+  runRateMoMPct: number | null;
+  yoyPct: number | null;
 }
 
-/**
- * getNetRevenue
- *
- * A focused helper for computing net revenue for a given set of filters.
- * Used internally and by other services that need a revenue figure for attribution.
- *
- * Real implementation:
- *   const result = await prisma.financialActual.aggregate({
- *     _sum: { netRevenue: true },
- *     where: {
- *       ...buildDateWhereClause(filters),
- *       ...(filters.repId ? { account: { salesRepId: filters.repId } } : {}),
- *       ...(filters.tier ? { account: { tier: filters.tier } } : {}),
- *     },
- *   });
- *   return Number(result._sum.netRevenue ?? 0);
- */
-export async function getNetRevenue(_filters: DashboardFilters): Promise<number> {
-  // TODO: replace with real Prisma query
-  return 1_063_600;
+export interface KPISummary {
+  frontbookNR: KPIMetric;
+  backbookNR: KPIMetric;
+  totalMR: KPIMetric;
+  usBinTPV: KPIMetric;
+}
+
+export async function getKPISummary(filters: DashboardFilters): Promise<KPISummary> {
+  const { startDate, endDate, tier, repName } = filters;
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+
+  // Same period last year for YoY
+  const yoyStart = new Date(Date.UTC(startDate.getUTCFullYear() - 1, startDate.getUTCMonth(), 1));
+  const yoyEnd   = new Date(Date.UTC(endDate.getUTCFullYear() - 1, endDate.getUTCMonth(), endDate.getUTCDate()));
+
+  // Last completed month for run rate
+  const lcmStart = lastCompletedMonthStart();
+  const lcmEnd   = new Date(Date.UTC(lcmStart.getUTCFullYear(), lcmStart.getUTCMonth() + 1, 0)); // end of that month
+  const prevMonthStart = subMonths(lcmStart, 1);
+  const prevMonthEnd   = new Date(Date.UTC(lcmStart.getUTCFullYear(), lcmStart.getUTCMonth(), 0));
+
+  const baseFinancialWhere = (bookType: 'FRONTBOOK' | 'BACKBOOK', dateFrom: Date, dateTo: Date) => ({
+    bookType,
+    reportingMonth: { gte: dateFrom, lte: dateTo },
+    account: {
+      ...accountWhere(tier),
+      ...(repName ? { salesRep: { fullName: { contains: repName, mode: Prisma.QueryMode.insensitive } } } : {}),
+    },
+  });
+
+  // ── Frontbook ────────────────────────────────────────────────────────────────
+  const [fbYTD, fbYoY, fbLCM, fbPrevLCM] = await Promise.all([
+    prisma.financialActual.aggregate({ where: baseFinancialWhere('FRONTBOOK', startDate, endDate), _sum: { totalFeeIncGrossFX: true } }),
+    prisma.financialActual.aggregate({ where: baseFinancialWhere('FRONTBOOK', yoyStart, yoyEnd), _sum: { totalFeeIncGrossFX: true } }),
+    prisma.financialActual.aggregate({ where: baseFinancialWhere('FRONTBOOK', lcmStart, lcmEnd), _sum: { totalFeeIncGrossFX: true } }),
+    prisma.financialActual.aggregate({ where: baseFinancialWhere('FRONTBOOK', prevMonthStart, prevMonthEnd), _sum: { totalFeeIncGrossFX: true } }),
+  ]);
+
+  // Frontbook NR target: latest cumulative FRONTBOOK_NR_CUMUL at or before endDate
+  const fbTarget = await prisma.target.findFirst({
+    where: { type: 'FRONTBOOK_NR_CUMUL', period: { lte: endDate } },
+    orderBy: { period: 'desc' },
+  });
+
+  const fbValue   = Number(fbYTD._sum.totalFeeIncGrossFX ?? 0);
+  const fbTgt     = fbTarget ? Number(fbTarget.amount) * 1000 : null; // targets stored in $K
+  const fbYoYVal  = Number(fbYoY._sum.totalFeeIncGrossFX ?? 0);
+  const fbLCMVal  = Number(fbLCM._sum.totalFeeIncGrossFX ?? 0);
+  const fbPrevVal = Number(fbPrevLCM._sum.totalFeeIncGrossFX ?? 0);
+
+  const frontbookNR: KPIMetric = {
+    value: fbValue,
+    target: fbTgt,
+    variancePct: fbTgt ? fbValue / fbTgt - 1 : null,
+    varianceAbs: fbTgt ? fbValue - fbTgt : null,
+    runRate: fbLCMVal * 12,
+    runRateMoMPct: fbPrevVal > 0 ? fbLCMVal / fbPrevVal - 1 : null,
+    yoyPct: fbYoYVal > 0 ? fbValue / fbYoYVal - 1 : null,
+  };
+
+  // ── Backbook ─────────────────────────────────────────────────────────────────
+  // PRD: go-live date < 2026-01-01 for backbook
+  const bbWhere = (dateFrom: Date, dateTo: Date) => ({
+    ...baseFinancialWhere('BACKBOOK', dateFrom, dateTo),
+    account: {
+      ...accountWhere(tier),
+      goLiveDate: { lt: new Date('2026-01-01') },
+      ...(repName ? { salesRep: { fullName: { contains: repName, mode: Prisma.QueryMode.insensitive } } } : {}),
+    },
+  });
+
+  const [bbYTD, bbYoY, bbLCM, bbPrevLCM] = await Promise.all([
+    prisma.financialActual.aggregate({ where: bbWhere(startDate, endDate), _sum: { totalFeeIncGrossFX: true } }),
+    prisma.financialActual.aggregate({ where: bbWhere(yoyStart, yoyEnd), _sum: { totalFeeIncGrossFX: true } }),
+    prisma.financialActual.aggregate({ where: bbWhere(lcmStart, lcmEnd), _sum: { totalFeeIncGrossFX: true } }),
+    prisma.financialActual.aggregate({ where: bbWhere(prevMonthStart, prevMonthEnd), _sum: { totalFeeIncGrossFX: true } }),
+  ]);
+
+  const bbTarget = await prisma.target.findFirst({
+    where: { type: 'BACKBOOK_NR', period: { lte: endDate } },
+    orderBy: { period: 'desc' },
+  });
+
+  const bbValue   = Number(bbYTD._sum.totalFeeIncGrossFX ?? 0);
+  const bbTgt     = bbTarget ? Number(bbTarget.amount) * 1_000_000 : null; // targets stored in $M
+  const bbYoYVal  = Number(bbYoY._sum.totalFeeIncGrossFX ?? 0);
+  const bbLCMVal  = Number(bbLCM._sum.totalFeeIncGrossFX ?? 0);
+  const bbPrevVal = Number(bbPrevLCM._sum.totalFeeIncGrossFX ?? 0);
+
+  const backbookNR: KPIMetric = {
+    value: bbValue,
+    target: bbTgt,
+    variancePct: bbTgt ? bbValue / bbTgt - 1 : null,
+    varianceAbs: bbTgt ? bbValue - bbTgt : null,
+    runRate: bbLCMVal * 12,
+    runRateMoMPct: bbPrevVal > 0 ? bbLCMVal / bbPrevVal - 1 : null,
+    yoyPct: bbYoYVal > 0 ? bbValue / bbYoYVal - 1 : null,
+  };
+
+  // ── US BIN TPV ────────────────────────────────────────────────────────────────
+  // PRD: acquirer ID = crb, pw — stored in salesRepName field is not acquirer;
+  // TpvActual doesn't carry acquirerId, so we aggregate all rows (the source
+  // sheet "2. TPV - US Bin" is already filtered to US BIN by Looker).
+  const [tpvYTD, tpvYoY, tpvLCM, tpvPrevLCM] = await Promise.all([
+    prisma.tpvActual.aggregate({ where: { reportDate: { gte: startDate, lte: endDate } }, _sum: { paymentVolume: true } }),
+    prisma.tpvActual.aggregate({ where: { reportDate: { gte: yoyStart, lte: yoyEnd } }, _sum: { paymentVolume: true } }),
+    prisma.tpvActual.aggregate({ where: { reportDate: { gte: lcmStart, lte: lcmEnd } }, _sum: { paymentVolume: true } }),
+    prisma.tpvActual.aggregate({ where: { reportDate: { gte: prevMonthStart, lte: prevMonthEnd } }, _sum: { paymentVolume: true } }),
+  ]);
+
+  const tpvTarget = await prisma.target.findFirst({
+    where: { type: 'TPV_ANNUALISED', period: { lte: endDate } },
+    orderBy: { period: 'desc' },
+  });
+
+  const tpvValue   = Number(tpvYTD._sum.paymentVolume ?? 0);
+  const tpvTgt     = tpvTarget ? Number(tpvTarget.amount) * 1_000_000_000 : null; // targets in $B
+  const tpvYoYVal  = Number(tpvYoY._sum.paymentVolume ?? 0);
+  const tpvLCMVal  = Number(tpvLCM._sum.paymentVolume ?? 0);
+  const tpvPrevVal = Number(tpvPrevLCM._sum.paymentVolume ?? 0);
+
+  const usBinTPV: KPIMetric = {
+    value: tpvValue,
+    target: tpvTgt,
+    variancePct: tpvTgt ? tpvValue / tpvTgt - 1 : null,
+    varianceAbs: tpvTgt ? tpvValue - tpvTgt : null,
+    runRate: tpvLCMVal * 12,
+    runRateMoMPct: tpvPrevVal > 0 ? tpvLCMVal / tpvPrevVal - 1 : null,
+    yoyPct: tpvYoYVal > 0 ? tpvValue / tpvYoYVal - 1 : null,
+  };
+
+  return {
+    frontbookNR,
+    backbookNR,
+    totalMR: {
+      value: fbValue + bbValue,
+      target: fbTgt && bbTgt ? fbTgt + bbTgt : null,
+      variancePct: fbTgt && bbTgt ? (fbValue + bbValue) / (fbTgt + bbTgt) - 1 : null,
+      varianceAbs: fbTgt && bbTgt ? (fbValue + bbValue) - (fbTgt + bbTgt) : null,
+      runRate: (fbLCMVal + bbLCMVal) * 12,
+      runRateMoMPct: (fbPrevVal + bbPrevVal) > 0 ? (fbLCMVal + bbLCMVal) / (fbPrevVal + bbPrevVal) - 1 : null,
+      yoyPct: (fbYoYVal + bbYoYVal) > 0 ? (fbValue + bbValue) / (fbYoYVal + bbYoYVal) - 1 : null,
+    },
+    usBinTPV,
+  };
+}
+
+// ─── Financial Trend (monthly series for charts) ──────────────────────────────
+
+export interface MonthlyPoint {
+  month: string;        // 'Jan 26'
+  isoMonth: string;     // '2026-01'
+  actual: number;
+  cumulActual: number;
+  baseTarget: number | null;
+  rollTarget: number | null;
+  cumulBase: number | null;
+  cumulRoll: number | null;
+}
+
+export async function getFrontbookTrend(filters: DashboardFilters): Promise<MonthlyPoint[]> {
+  const year = filters.startDate.getUTCFullYear();
+  const janStart = new Date(Date.UTC(year, 0, 1));
+  const decEnd   = new Date(Date.UTC(year, 11, 31));
+
+  // Monthly FB actuals
+  const actuals = await prisma.financialActual.groupBy({
+    by: ['reportingMonth'],
+    where: {
+      bookType: 'FRONTBOOK',
+      reportingMonth: { gte: janStart, lte: filters.endDate },
+      account: {
+        ...SOLIDGATE_FILTER,
+        ...(filters.tier ? { tier: filters.tier as any } : {}),
+      },
+    },
+    _sum: { totalFeeIncGrossFX: true },
+    orderBy: { reportingMonth: 'asc' },
+  });
+
+  // All targets for the year
+  const [baseTargets, rollTargets] = await Promise.all([
+    prisma.target.findMany({ where: { type: 'FRONTBOOK_NR', period: { gte: janStart, lte: decEnd } }, orderBy: { period: 'asc' } }),
+    prisma.target.findMany({ where: { type: 'FRONTBOOK_NR_CUMUL', period: { gte: janStart, lte: decEnd } }, orderBy: { period: 'asc' } }),
+  ]);
+
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const points: MonthlyPoint[] = [];
+  let cumulActual = 0;
+
+  for (let m = 0; m < 12; m++) {
+    const periodKey = `${year}-${String(m + 1).padStart(2, '0')}`;
+    const actual = actuals.find(a => {
+      const d = new Date(a.reportingMonth);
+      return d.getUTCFullYear() === year && d.getUTCMonth() === m;
+    });
+    const base = baseTargets.find(t => new Date(t.period).getUTCMonth() === m);
+    const roll = rollTargets.find(t => new Date(t.period).getUTCMonth() === m);
+
+    const monthActual = Number(actual?._sum.totalFeeIncGrossFX ?? 0);
+    cumulActual += monthActual;
+
+    points.push({
+      month: `${MONTH_LABELS[m]} ${String(year).slice(2)}`,
+      isoMonth: periodKey,
+      actual: monthActual,
+      cumulActual,
+      baseTarget: base ? Number(base.amount) * 1000 : null,
+      rollTarget: null, // FB has incremental + cumul; roll stored as cumul
+      cumulBase: null,
+      cumulRoll: roll ? Number(roll.amount) * 1000 : null,
+    });
+  }
+
+  return points;
+}
+
+export async function getBackbookTrend(filters: DashboardFilters): Promise<MonthlyPoint[]> {
+  const year = filters.startDate.getUTCFullYear();
+  const janStart = new Date(Date.UTC(year, 0, 1));
+  const decEnd   = new Date(Date.UTC(year, 11, 31));
+
+  const actuals = await prisma.financialActual.groupBy({
+    by: ['reportingMonth'],
+    where: {
+      bookType: 'BACKBOOK',
+      reportingMonth: { gte: janStart, lte: filters.endDate },
+      account: {
+        ...SOLIDGATE_FILTER,
+        goLiveDate: { lt: new Date('2026-01-01') },
+        ...(filters.tier ? { tier: filters.tier as any } : {}),
+      },
+    },
+    _sum: { totalFeeIncGrossFX: true },
+    orderBy: { reportingMonth: 'asc' },
+  });
+
+  const bbTargets = await prisma.target.findMany({
+    where: { type: 'BACKBOOK_NR', period: { gte: janStart, lte: decEnd } },
+    orderBy: { period: 'asc' },
+  });
+
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const points: MonthlyPoint[] = [];
+  let cumulActual = 0;
+
+  for (let m = 0; m < 12; m++) {
+    const periodKey = `${year}-${String(m + 1).padStart(2, '0')}`;
+    const actual = actuals.find(a => new Date(a.reportingMonth).getUTCMonth() === m);
+    const tgt = bbTargets.find(t => new Date(t.period).getUTCMonth() === m);
+
+    const monthActual = Number(actual?._sum.totalFeeIncGrossFX ?? 0);
+    cumulActual += monthActual;
+
+    points.push({
+      month: `${MONTH_LABELS[m]} ${String(year).slice(2)}`,
+      isoMonth: periodKey,
+      actual: monthActual,
+      cumulActual,
+      baseTarget: tgt ? Number(tgt.amount) * 1_000_000 : null,
+      rollTarget: null,
+      cumulBase: null,
+      cumulRoll: null,
+    });
+  }
+
+  return points;
+}
+
+export async function getTPVByMonth(filters: DashboardFilters): Promise<{ month: string; isoMonth: string; volume: number }[]> {
+  const year = filters.startDate.getUTCFullYear();
+  const janStart = new Date(Date.UTC(year, 0, 1));
+
+  const rows = await prisma.tpvActual.groupBy({
+    by: ['reportDate'],
+    where: { reportDate: { gte: janStart, lte: filters.endDate } },
+    _sum: { paymentVolume: true },
+    orderBy: { reportDate: 'asc' },
+  });
+
+  // Collapse daily rows into monthly buckets
+  const monthMap = new Map<string, number>();
+  for (const r of rows) {
+    const d = new Date(r.reportDate);
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    monthMap.set(key, (monthMap.get(key) ?? 0) + Number(r._sum.paymentVolume ?? 0));
+  }
+
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return Array.from(monthMap.entries()).map(([isoMonth, volume]) => {
+    const m = parseInt(isoMonth.split('-')[1]) - 1;
+    return { month: `${MONTH_LABELS[m]} ${isoMonth.split('-')[0].slice(2)}`, isoMonth, volume };
+  });
 }

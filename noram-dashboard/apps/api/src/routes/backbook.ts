@@ -1,63 +1,51 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { parseFilters } from '../middleware/filters';
-import { getAccounts, getBackbookSummary } from '../services/backbookService';
+import { getManagedAccounts, getUnmanagedAccounts, getExcessiveVamp, getVampTrend } from '../services/backbookService';
 
-export const backbookRouter = Router();
+const router = Router();
 
-/**
- * GET /api/backbook
- *
- * Returns accounts joined with their latest financial actuals (net revenue, TPV, VAMP ratio).
- * Used by the Backbook Accounts section table.
- *
- * Query params:
- *   - dateRange, startDate, endDate, repId, tier (from parseFilters)
- *   - region?: filter by account region
- *   - managed?: 'true' | 'false' — filter managed/unmanaged only
- */
-backbookRouter.get(
-  '/',
-  parseFilters,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const filters = (req as any).dashboardFilters;
+// GET /backbook/managed
+router.get('/managed', parseFilters, async (req, res) => {
+  try {
+    const data = await getManagedAccounts(req.dashboardFilters);
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /backbook/managed]', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch managed accounts' });
+  }
+});
 
-      // Backbook-specific filters
-      const region = typeof req.query.region === 'string' ? req.query.region : undefined;
-      const managed = req.query.managed === 'true'
-        ? true
-        : req.query.managed === 'false'
-        ? false
-        : undefined;
+// GET /backbook/unmanaged
+router.get('/unmanaged', parseFilters, async (req, res) => {
+  try {
+    const data = await getUnmanagedAccounts(req.dashboardFilters);
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /backbook/unmanaged]', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch unmanaged accounts' });
+  }
+});
 
-      // TODO: pass region and managed to getAccounts once Prisma is wired
-      const accounts = await getAccounts({ ...filters, region, managed });
+// GET /backbook/excessive-vamp
+router.get('/excessive-vamp', parseFilters, async (req, res) => {
+  try {
+    const data = await getExcessiveVamp(req.dashboardFilters);
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /backbook/excessive-vamp]', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch excessive VAMP records' });
+  }
+});
 
-      res.json({ success: true, data: accounts });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+// GET /backbook/vamp-trend
+router.get('/vamp-trend', parseFilters, async (req, res) => {
+  try {
+    const data = await getVampTrend(req.dashboardFilters);
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('[GET /backbook/vamp-trend]', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch VAMP trend' });
+  }
+});
 
-/**
- * GET /api/backbook/summary
- *
- * Returns a high-level breakdown of managed vs unmanaged account revenue.
- * Used for the KPI cards at the top of the Backbook section.
- *
- * Query params: same as GET /api/backbook
- */
-backbookRouter.get(
-  '/summary',
-  parseFilters,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const filters = (req as any).dashboardFilters;
-      const summary = await getBackbookSummary(filters);
-      res.json({ success: true, data: summary });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
+export default router;

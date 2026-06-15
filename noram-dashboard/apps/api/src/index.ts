@@ -5,11 +5,12 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 
 // Route imports
-import { kpiRouter } from './routes/kpi';
-import { pipelineRouter } from './routes/pipeline';
-import { backbookRouter } from './routes/backbook';
-import { leaderboardRouter } from './routes/leaderboard';
-import { targetsRouter } from './routes/targets';
+import kpiRouter from './routes/kpi';
+import financialsRouter from './routes/financials';
+import pipelineRouter from './routes/pipeline';
+import backbookRouter from './routes/backbook';
+import leaderboardRouter from './routes/leaderboard';
+import targetsRouter from './routes/targets';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
@@ -38,8 +39,11 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // ─── API routes ───────────────────────────────────────────────────────────────
 
-// KPI summary and financial trend data for the Executive Summary and Financial Trends sections
+// KPI summary for Executive Summary hero cards
 app.use('/api/kpi', kpiRouter);
+
+// Monthly financial trend data (frontbook, backbook, TPV)
+app.use('/api/financials', financialsRouter);
 
 // Open pipeline opportunities and pipeline funnel data for the Frontbook Pipeline section
 app.use('/api/pipeline', pipelineRouter);
