@@ -1,5 +1,4 @@
-import { Prisma } from '@prisma/client';
-import { prisma } from '../../../packages/db/src';
+import { Prisma, prisma } from '../lib/prisma';
 import { DashboardFilters, monthStart, subMonths, lastCompletedMonthStart } from '../middleware/filters';
 
 const SOLIDGATE_FILTER = { NOT: { referralPartner: { contains: 'SOLIDGATE', mode: Prisma.QueryMode.insensitive } } };
@@ -218,12 +217,12 @@ export async function getFrontbookTrend(filters: DashboardFilters): Promise<Mont
 
   for (let m = 0; m < 12; m++) {
     const periodKey = `${year}-${String(m + 1).padStart(2, '0')}`;
-    const actual = actuals.find(a => {
+    const actual = actuals.find((a: typeof actuals[number]) => {
       const d = new Date(a.reportingMonth);
       return d.getUTCFullYear() === year && d.getUTCMonth() === m;
     });
-    const base = baseTargets.find(t => new Date(t.period).getUTCMonth() === m);
-    const roll = rollTargets.find(t => new Date(t.period).getUTCMonth() === m);
+    const base = baseTargets.find((t: typeof baseTargets[number]) => new Date(t.period).getUTCMonth() === m);
+    const roll = rollTargets.find((t: typeof rollTargets[number]) => new Date(t.period).getUTCMonth() === m);
 
     const monthActual = Number(actual?._sum.totalFeeIncGrossFX ?? 0);
     cumulActual += monthActual;
@@ -274,8 +273,8 @@ export async function getBackbookTrend(filters: DashboardFilters): Promise<Month
 
   for (let m = 0; m < 12; m++) {
     const periodKey = `${year}-${String(m + 1).padStart(2, '0')}`;
-    const actual = actuals.find(a => new Date(a.reportingMonth).getUTCMonth() === m);
-    const tgt = bbTargets.find(t => new Date(t.period).getUTCMonth() === m);
+    const actual = actuals.find((a: typeof actuals[number]) => new Date(a.reportingMonth).getUTCMonth() === m);
+    const tgt = bbTargets.find((t: typeof bbTargets[number]) => new Date(t.period).getUTCMonth() === m);
 
     const monthActual = Number(actual?._sum.totalFeeIncGrossFX ?? 0);
     cumulActual += monthActual;

@@ -1,5 +1,4 @@
-import { Prisma } from '@prisma/client';
-import { prisma } from '../../../packages/db/src';
+import { Prisma, prisma } from '../lib/prisma';
 import { DashboardFilters, lastCompletedMonthStart, subMonths } from '../middleware/filters';
 
 const SOLIDGATE_FILTER = { NOT: { referralPartner: { contains: 'SOLIDGATE', mode: Prisma.QueryMode.insensitive } } };

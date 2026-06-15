@@ -1,4 +1,4 @@
-import { prisma } from '../../../packages/db/src';
+import { prisma } from '../lib/prisma';
 import { DashboardFilters, subMonths } from '../middleware/filters';
 
 // Stages excluded from weighted pipeline display (PRD spec)

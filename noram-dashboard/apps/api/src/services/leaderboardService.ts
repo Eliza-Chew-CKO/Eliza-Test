@@ -1,5 +1,4 @@
-import { Prisma } from '@prisma/client';
-import { prisma } from '../../../packages/db/src';
+import { Prisma, prisma } from '../lib/prisma';
 import { DashboardFilters, lastCompletedMonthStart } from '../middleware/filters';
 
 export interface RepLeaderboardRow {
