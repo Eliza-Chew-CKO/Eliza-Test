@@ -1,0 +1,12 @@
+browser-profile/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+raw_outputs_*.txt
+debug_*.png
+debug_*.html
+*.egg-info/
+.git/

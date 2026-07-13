@@ -1,0 +1,55 @@
+name: NORAM L90 Leaderboard
+
+# Every morning, read the four L90 leaderboards from the NORAM summary-metrics
+# tab (published to the web as CSV) and rewrite the Slack canvas. GitHub cron is
+# UTC with no DST awareness, so we fire at 13:00 and 14:00 UTC and let the gate
+# keep only the run that is 9am in New York.
+on:
+  schedule:
+    - cron: "3 13 * * *"  # ~9am EDT
+    - cron: "3 14 * * *"  # ~9am EST
+  workflow_dispatch: {}    # manual runs allowed any time (bypass the gate)
+
+concurrency:
+  group: noram-leaderboard
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate to 9am America/New_York
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run — bypassing gate."; exit 0
+          fi
+          HOUR=$(TZ=America/New_York date +%H)
+          echo "New York hour: $HOUR"
+          if [ "$HOUR" != "09" ]; then
+            echo "Not 9am in New York — skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip != 'true'
+        run: pip install -r noram-leaderboard/requirements.txt
+
+      - name: Refresh leaderboard canvas
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          # Non-sensitive config (published-public sheet + Slack identifiers) is
+          # set here directly. Only the Slack token is a repo secret.
+          SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vS0cTxJKMvsE0NoE9NJ-2txtV4S2nyiuxYW4x2D2itK7CanwDtBhw49Djag6EVEsj5KMVMg2AN-nNRU/pub?gid=272887757&single=true&output=csv"
+          SLACK_CANVAS_ID: "F0BGZUDCJ0J"
+          SLACK_TEAM_ID: "T0251H42B"
+          SLACK_DM_CHANNEL: "U0AGKMJTZ43"
+          SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+        run: python noram-leaderboard/leaderboard.py
