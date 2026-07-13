@@ -1,0 +1,3 @@
+# NORAM leaderboard automation — Python dependencies
+simple-salesforce==1.12.5
+requests==2.31.0

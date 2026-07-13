@@ -1,0 +1,59 @@
+name: NORAM L90 Leaderboard
+
+# Refresh the NORAM stage-movement leaderboard Slack canvas every morning at
+# 9am America/New_York. GitHub cron runs in UTC and has no DST awareness, so we
+# fire at both 13:00 UTC (9am EDT) and 14:00 UTC (9am EST) and let the "gate"
+# step drop whichever run isn't actually 9am in New York.
+on:
+  schedule:
+    - cron: "0 13 * * *"
+    - cron: "0 14 * * *"
+  workflow_dispatch: {}  # allow manual runs any time (skips the 9am gate)
+
+concurrency:
+  group: noram-leaderboard
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate to 9am America/New_York
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run — skipping time gate."; exit 0
+          fi
+          HOUR=$(TZ=America/New_York date +%H)
+          echo "New York hour: $HOUR"
+          if [ "$HOUR" != "09" ]; then
+            echo "Not 9am in New York — exiting."; echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip != 'true'
+        run: pip install -r noram-leaderboard/requirements.txt
+
+      - name: Refresh leaderboard canvas
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          SF_ACCESS_TOKEN: ${{ secrets.SF_ACCESS_TOKEN }}
+          SF_INSTANCE_URL: ${{ secrets.SF_INSTANCE_URL }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_SECURITY_TOKEN: ${{ secrets.SF_SECURITY_TOKEN }}
+          SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
+          SF_CLIENT_SECRET: ${{ secrets.SF_CLIENT_SECRET }}
+          SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+          SLACK_CANVAS_ID: ${{ secrets.SLACK_CANVAS_ID }}
+          SLACK_TEAM_ID: ${{ secrets.SLACK_TEAM_ID }}
+          SLACK_DM_CHANNEL: ${{ secrets.SLACK_DM_CHANNEL }}
+        run: python noram-leaderboard/leaderboard.py
