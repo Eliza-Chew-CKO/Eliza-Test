@@ -1,93 +1,61 @@
 # NORAM L90 Leaderboard → Slack canvas
 
-Recomputes the NORAM Last-90-day stage-movement leaderboard and rewrites a Slack
-canvas so a single, stable link always shows the latest numbers. Runs **hourly
-during weekday business hours (9am–6pm America/New_York)** via GitHub Actions
-(`.github/workflows/noram-leaderboard.yml`); the **9am** run also DMs the link,
-intraday runs refresh the canvas silently.
+Reads the four Last-90-day leaderboards from the NORAM **summary-metrics** tab
+(the sheet owns the numbers/methodology) and rewrites a Slack canvas so a single
+stable link always shows the latest figures. Runs every morning at **9am
+America/New_York** via GitHub Actions (`.github/workflows/noram-leaderboard.yml`)
+and DMs the link.
 
-The 90-day window is always relative to the run (SOQL `LAST_N_DAYS:90`) and the
-"as of" date is today in America/New_York — so it's a continuously rolling
-last-90-days, never pinned to a fixed date.
+## Data flow
 
-## What it measures
+```
+Google Sheet "summary metrics" tab  ──(published CSV)──▶  leaderboard.py  ──▶  Slack canvas
+```
 
-| Metric | Source field | Counts an opp when… |
-|---|---|---|
-| Explore Meetings | `Disco_Call_Date__c` ("First Explore Meeting Date") | date is in the last 90 days |
-| Moved to Propose | `DateSettoP1__c` | date is in the last 90 days |
-| Moved to Trade | `DateSettoT1__c` | date is in the last 90 days |
-| Moved to Handover | `OpportunityFieldHistory` stage change → `Handover` | transition happened in the last 90 days (deduped per opp) |
+The script parses four Rank / Name / value tables — **Explore Meetings**,
+**Moved to Propose**, **Moved to Trade**, **Moved to Handover** (top 10 each) —
+and ignores everything else on the tab (e.g. the Quota table). The "as of" date
+is today in America/New_York; the numbers are whatever the sheet currently
+holds, so as the sheet refreshes, the canvas follows.
 
-- **Scope:** `Opp_Owner_Region__c = 'NORAM' OR Sales_Ops_Second_Opp_Owner_Sales_Region__c = 'NORAM'`
-  (opportunities where the **first or second** owner's region is NORAM)
-- **Scoring:** sole opp owner = **1 pt**; if a 2nd owner exists, **0.5 pt each**
-  (`Owner` = first, `Second_Opportunity_Owner__c` = second).
-- Each table shows the **top 10**, ranked per metric (ties broken alphabetically).
+## Setup
 
-## Required GitHub secrets
+### 1. Publish the summary-metrics tab as CSV
+In the sheet: **File → Share → Publish to web** → choose the **summary metrics**
+tab → **Comma-separated values (.csv)** → Publish. Copy the generated URL (looks
+like `https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?gid=...&single=true&output=csv`).
 
-Salesforce — pick **one** of three modes (checked in this order):
+> This makes that tab's contents reachable by anyone with the link. Publish only
+> the summary-metrics tab, not the whole workbook.
 
-| Mode | Secrets | Notes |
-|---|---|---|
-| **Client credentials** (recommended) | `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, `SF_INSTANCE_URL` | Connected App Consumer Key/Secret. Mints a fresh token every run — nothing expires. Works with SSO. |
-| Static token | `SF_ACCESS_TOKEN`, `SF_INSTANCE_URL` | Simplest, but a session token expires in ~2h — not for unattended use. |
-| Username/password | `SF_USERNAME`, `SF_PASSWORD`, `SF_SECURITY_TOKEN`, `SF_INSTANCE_URL` | Blocked on SSO orgs. |
+### 2. Add GitHub Actions secrets
+Repo → Settings → Secrets and variables → Actions:
 
-`SF_INSTANCE_URL` = your My Domain, e.g. `https://checkout.my.salesforce.com`.
-Optional `SF_TOKEN_URL` overrides the token endpoint (defaults to
-`<SF_INSTANCE_URL>/services/oauth2/token`).
-
-### Setting up the Connected App (client credentials)
-
-1. **Setup → App Manager → New Connected App** (or *New Connected App* under
-   *App Manager* in Lightning). Name it e.g. `NORAM Leaderboard Bot`.
-2. **Enable OAuth Settings.** Callback URL can be `https://login.salesforce.com`
-   (unused by this flow). Selected OAuth scopes: **Manage user data via APIs
-   (`api`)**. Save.
-3. Open the app → **Manage → Edit Policies**:
-   - Under **OAuth Policies**, set **Permitted Users** as needed and enable
-     **Client Credentials Flow**.
-   - Set **Run As** to an integration user that can read the NORAM
-     Opportunities + field history (this user's data access defines what the
-     job sees).
-4. **Manage Consumer Details** → copy **Consumer Key** → `SF_CLIENT_ID` and
-   **Consumer Secret** → `SF_CLIENT_SECRET`.
-5. Add those plus `SF_INSTANCE_URL` as GitHub Actions secrets. Done — the job
-   exchanges them for a short-lived access token on each run.
-
-> Token endpoint used: `POST <SF_INSTANCE_URL>/services/oauth2/token` with
-> `grant_type=client_credentials`. Test locally with:
-> `curl -X POST "$SF_INSTANCE_URL/services/oauth2/token" -d grant_type=client_credentials -d client_id=... -d client_secret=...`
-
-Slack:
-
-| Secret | Notes |
+| Secret | Value |
 |---|---|
-| `SLACK_TOKEN` | bot/user token with `canvases:write` (and `canvases:read`) |
-| `SLACK_CANVAS_ID` | canvas to rewrite (defaults to `F0BGZUDCJ0J` if unset) |
-| `SLACK_TEAM_ID` | e.g. `T0251H42B` — only used to build the notify link |
-| `SLACK_DM_CHANNEL` | optional — user/channel id to ping with the link (e.g. `U0AGKMJTZ43`) |
-
-`NOTIFY` (env, set by the workflow) controls the DM: `1` sends it, `0` refreshes
-the canvas silently. Defaults to on for local/manual runs.
+| `SHEET_CSV_URL` | the published CSV url from step 1 |
+| `SLACK_TOKEN` | Slack bot/user token with `canvases:write` |
+| `SLACK_CANVAS_ID` | `F0BGZUDCJ0J` (the canvas to rewrite) |
+| `SLACK_TEAM_ID` | `T0251H42B` (only used to build the notify link) |
+| `SLACK_DM_CHANNEL` | optional — user/channel id to DM (e.g. `U0AGKMJTZ43`) |
 
 ## Run locally
 
 ```bash
 pip install -r requirements.txt
-export SF_ACCESS_TOKEN=... SF_INSTANCE_URL=... SLACK_TOKEN=... SLACK_CANVAS_ID=F0BH3FS6THS
+export SHEET_CSV_URL='https://docs.google.com/.../pub?...&output=csv'
+export SLACK_TOKEN=... SLACK_CANVAS_ID=F0BGZUDCJ0J
 python leaderboard.py
 ```
 
-Without `SLACK_TOKEN` the script prints the canvas markdown to stdout instead of
-publishing — handy for a dry run.
+Without `SLACK_TOKEN` the script prints the canvas markdown to stdout (dry run).
 
 ## Notes
 
-- If `canvases.edit` can't modify the existing canvas (e.g. ownership), the
-  script creates a fresh canvas and logs the new id — set `SLACK_CANVAS_ID` to
-  that value so subsequent runs stay on one link.
-- The workflow fires at 13:00 and 14:00 UTC and self-gates to whichever is 9am
-  in New York, so it stays correct across daylight-saving changes.
+- Parsing keys off the section headers on the tab (rows containing "explore",
+  "propose", "trade", "handover"). If those labels change, update `METRICS` in
+  `leaderboard.py`. The job logs a warning if a metric parses zero rows.
+- If `canvases.edit` can't modify the target canvas, the script creates a fresh
+  one and logs the new id — set `SLACK_CANVAS_ID` to that value afterwards.
+- The workflow fires at 13:00 and 14:00 UTC and self-gates to 9am New York, so
+  it stays correct across daylight-saving changes.
