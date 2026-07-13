@@ -14,7 +14,8 @@ morning at **9am America/New_York** via GitHub Actions
 | Moved to Trade | `DateSettoT1__c` | date is in the last 90 days |
 | Moved to Handover | `OpportunityFieldHistory` stage change → `Handover` | transition happened in the last 90 days (deduped per opp) |
 
-- **Scope:** `Record_Owner_Sales_Territory__c = 'NORAM'`
+- **Scope:** `Opp_Owner_Region__c = 'NORAM' OR Sales_Ops_Second_Opp_Owner_Sales_Region__c = 'NORAM'`
+  (opportunities where the **first or second** owner's region is NORAM)
 - **Scoring:** sole opp owner = **1 pt**; if a 2nd owner exists, **0.5 pt each**
   (`Owner` = first, `Second_Opportunity_Owner__c` = second).
 - Each table shows the **top 10**, ranked per metric (ties broken alphabetically).

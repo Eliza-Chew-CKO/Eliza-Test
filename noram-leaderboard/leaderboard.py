@@ -5,7 +5,8 @@ Recomputes the Last-90-day NORAM leaderboard across four metrics and rewrites a
 Slack canvas so the same link always shows the latest numbers. Designed to run
 unattended (see .github/workflows/noram-leaderboard.yml).
 
-Scope     : Record_Owner_Sales_Territory__c = 'NORAM'
+Scope     : Opp_Owner_Region__c = 'NORAM'
+             OR Sales_Ops_Second_Opp_Owner_Sales_Region__c = 'NORAM'
 Window     : last 90 days
 Metrics    : Explore meetings   (Disco_Call_Date__c)
              Moved to Propose    (DateSettoP1__c)
@@ -30,9 +31,21 @@ from urllib.parse import urlparse
 
 import requests
 
-TERRITORY = "NORAM"
+REGION = "NORAM"
 DEFAULT_CANVAS_ID = "F0BH3FS6THS"
 TOP_N = 10
+
+# Scope: opportunities where the first OR second owner's region is NORAM.
+# (Opp_Owner_Region__c is the first owner's region; Sales_Ops_Second_Opp_Owner_Sales_Region__c
+# is the maintained region for the second owner.)
+SCOPE_OPP = (
+    f"(Opp_Owner_Region__c = '{REGION}' "
+    f"OR Sales_Ops_Second_Opp_Owner_Sales_Region__c = '{REGION}')"
+)
+SCOPE_HISTORY = (
+    f"(Opportunity.Opp_Owner_Region__c = '{REGION}' "
+    f"OR Opportunity.Sales_Ops_Second_Opp_Owner_Sales_Region__c = '{REGION}')"
+)
 
 # metric key -> (display title, emoji, date field on Opportunity)
 DATE_METRICS = [
@@ -95,7 +108,7 @@ def date_metric_pairs(sf, date_field):
     q = (
         f"SELECT Id, Owner.Name, Second_Opportunity_Owner__r.Name "
         f"FROM Opportunity "
-        f"WHERE Record_Owner_Sales_Territory__c = '{TERRITORY}' "
+        f"WHERE {SCOPE_OPP} "
         f"AND {date_field} = LAST_N_DAYS:90"
     )
     return [_pair(r) for r in sf.query_all(q)["records"]]
@@ -108,7 +121,7 @@ def handover_pairs(sf):
         "Opportunity.Second_Opportunity_Owner__r.Name "
         "FROM OpportunityFieldHistory "
         "WHERE Field = 'StageName' AND CreatedDate = LAST_N_DAYS:90 "
-        f"AND Opportunity.Record_Owner_Sales_Territory__c = '{TERRITORY}'"
+        f"AND {SCOPE_HISTORY}"
     )
     by_opp = {}
     for r in sf.query_all(q)["records"]:
@@ -149,9 +162,10 @@ def build_canvas_markdown(sections, as_of):
     out = [
         "# NORAM Stage-Movement Leaderboard — Last 90 Days",
         "",
-        f"_Scope: `Record Owner Sales Territory = {TERRITORY}`. Window: last 90 days "
-        f"(as of ![](slack_date:{as_of})). Scoring: sole opp owner = **1 pt**; "
-        "if a 2nd owner exists, **0.5 pt each**. Ranked per metric._",
+        f"_Scope: opps where **Opp Owner Region = {REGION} OR Second Opp Owner Region = {REGION}**. "
+        f"Window: last 90 days (as of ![](slack_date:{as_of})). "
+        "Scoring: sole opp owner = **1 pt**; if a 2nd owner exists, **0.5 pt each**. "
+        "Ranked per metric._",
         "",
     ]
     for title, emoji, rows in sections:
