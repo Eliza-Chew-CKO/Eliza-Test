@@ -27,18 +27,39 @@ last-90-days, never pinned to a fixed date.
 
 ## Required GitHub secrets
 
-Salesforce (either the token pair **or** the username set):
+Salesforce — pick **one** of three modes (checked in this order):
 
-| Secret | Notes |
-|---|---|
-| `SF_ACCESS_TOKEN` | OAuth/session token — recommended for the SSO org |
-| `SF_INSTANCE_URL` | e.g. `https://checkout.lightning.force.com` |
-| `SF_USERNAME` / `SF_PASSWORD` / `SF_SECURITY_TOKEN` | only if not using a token |
-| `SF_CLIENT_ID` / `SF_CLIENT_SECRET` | optional (Connected App) |
+| Mode | Secrets | Notes |
+|---|---|---|
+| **Client credentials** (recommended) | `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, `SF_INSTANCE_URL` | Connected App Consumer Key/Secret. Mints a fresh token every run — nothing expires. Works with SSO. |
+| Static token | `SF_ACCESS_TOKEN`, `SF_INSTANCE_URL` | Simplest, but a session token expires in ~2h — not for unattended use. |
+| Username/password | `SF_USERNAME`, `SF_PASSWORD`, `SF_SECURITY_TOKEN`, `SF_INSTANCE_URL` | Blocked on SSO orgs. |
 
-> For a truly unattended job, use a **Connected App** (OAuth) rather than a
-> browser session token, which expires in ~2 hours. See
-> `../automation test/sf_auth.py` for how to mint one.
+`SF_INSTANCE_URL` = your My Domain, e.g. `https://checkout.my.salesforce.com`.
+Optional `SF_TOKEN_URL` overrides the token endpoint (defaults to
+`<SF_INSTANCE_URL>/services/oauth2/token`).
+
+### Setting up the Connected App (client credentials)
+
+1. **Setup → App Manager → New Connected App** (or *New Connected App* under
+   *App Manager* in Lightning). Name it e.g. `NORAM Leaderboard Bot`.
+2. **Enable OAuth Settings.** Callback URL can be `https://login.salesforce.com`
+   (unused by this flow). Selected OAuth scopes: **Manage user data via APIs
+   (`api`)**. Save.
+3. Open the app → **Manage → Edit Policies**:
+   - Under **OAuth Policies**, set **Permitted Users** as needed and enable
+     **Client Credentials Flow**.
+   - Set **Run As** to an integration user that can read the NORAM
+     Opportunities + field history (this user's data access defines what the
+     job sees).
+4. **Manage Consumer Details** → copy **Consumer Key** → `SF_CLIENT_ID` and
+   **Consumer Secret** → `SF_CLIENT_SECRET`.
+5. Add those plus `SF_INSTANCE_URL` as GitHub Actions secrets. Done — the job
+   exchanges them for a short-lived access token on each run.
+
+> Token endpoint used: `POST <SF_INSTANCE_URL>/services/oauth2/token` with
+> `grant_type=client_credentials`. Test locally with:
+> `curl -X POST "$SF_INSTANCE_URL/services/oauth2/token" -d grant_type=client_credentials -d client_id=... -d client_secret=...`
 
 Slack:
 

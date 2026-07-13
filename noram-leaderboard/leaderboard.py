@@ -14,9 +14,11 @@ Metrics    : Explore meetings   (Disco_Call_Date__c)
              Moved to Handover   (stage-change into 'Handover', from field history)
 Scoring    : sole opp owner = 1 point; if a 2nd owner exists, 0.5 each.
 
-Auth follows the same env contract as `automation test/sf_auth.py`:
-  SF_ACCESS_TOKEN + SF_INSTANCE_URL         (session token — SSO orgs)
-  or SF_USERNAME + SF_PASSWORD + SF_SECURITY_TOKEN + SF_INSTANCE_URL
+Salesforce auth (first match wins):
+  1. SF_CLIENT_ID + SF_CLIENT_SECRET + SF_INSTANCE_URL   (OAuth client
+     credentials — recommended for unattended runs; mints a fresh token per run)
+  2. SF_ACCESS_TOKEN + SF_INSTANCE_URL                    (static session token)
+  3. SF_USERNAME + SF_PASSWORD + SF_SECURITY_TOKEN + SF_INSTANCE_URL
 Slack:
   SLACK_TOKEN        bot/user token with `canvases:write` (+ `canvases:read`)
   SLACK_CANVAS_ID    canvas to rewrite (default below)
@@ -77,6 +79,34 @@ def get_salesforce_client():
         sf = Salesforce(instance_url=instance_url, session_id=token, version=version)
         sf.query("SELECT Id FROM User LIMIT 1")  # probe
         log.info("Salesforce: session-token auth OK (%s)", instance_url)
+        return sf
+
+    # ------------------------------------------------------------------ #
+    # OAuth 2.0 Client Credentials flow (recommended for unattended runs).
+    # Set SF_CLIENT_ID + SF_CLIENT_SECRET (Connected App Consumer Key/Secret)
+    # and SF_INSTANCE_URL (your My Domain). A fresh access token is minted per
+    # run, so nothing expires between runs. Works with SSO orgs.
+    # ------------------------------------------------------------------ #
+    client_id, client_secret = os.getenv("SF_CLIENT_ID", ""), os.getenv("SF_CLIENT_SECRET", "")
+    if client_id and client_secret and not os.getenv("SF_USERNAME"):
+        if not instance_url:
+            sys.exit("Client-credentials auth needs SF_INSTANCE_URL (your My Domain).")
+        token_url = os.getenv("SF_TOKEN_URL") or f"{instance_url}/services/oauth2/token"
+        resp = requests.post(
+            token_url,
+            data={"grant_type": "client_credentials", "client_id": client_id, "client_secret": client_secret},
+            timeout=30,
+        )
+        body = resp.json()
+        if "access_token" not in body:
+            sys.exit(f"Client-credentials token request failed: {body}")
+        sf = Salesforce(
+            instance_url=body.get("instance_url", instance_url),
+            session_id=body["access_token"],
+            version=version,
+        )
+        sf.query("SELECT Id FROM User LIMIT 1")  # probe
+        log.info("Salesforce: client-credentials auth OK (%s)", body.get("instance_url", instance_url))
         return sf
 
     username, password = os.getenv("SF_USERNAME", ""), os.getenv("SF_PASSWORD", "")
