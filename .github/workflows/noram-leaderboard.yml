@@ -1,14 +1,14 @@
 name: NORAM L90 Leaderboard
 
-# Refresh the NORAM stage-movement leaderboard Slack canvas every morning at
-# 9am America/New_York. GitHub cron runs in UTC and has no DST awareness, so we
-# fire at both 13:00 UTC (9am EDT) and 14:00 UTC (9am EST) and let the "gate"
-# step drop whichever run isn't actually 9am in New York.
+# Refreshes the NORAM leaderboard Slack canvas on a rolling last-90-days basis
+# (the window is always relative to the run). GitHub cron is UTC with no DST
+# awareness, so we fire hourly across the UTC span that can cover ET business
+# hours and let the "gate" step keep only weekday runs between 9am–6pm ET.
+# The 9am ET run also DMs the link; intraday runs refresh the canvas silently.
 on:
   schedule:
-    - cron: "0 13 * * *"
-    - cron: "0 14 * * *"
-  workflow_dispatch: {}  # allow manual runs any time (skips the 9am gate)
+    - cron: "0 13-23 * * 1-5"  # hourly 13:00–23:00 UTC, Mon–Fri (covers 9am–6pm ET year-round)
+  workflow_dispatch: {}         # manual runs allowed any time (bypass the gate, and DM)
 
 concurrency:
   group: noram-leaderboard
@@ -18,17 +18,22 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - name: Gate to 9am America/New_York
+      - name: Gate to weekday business hours (America/New_York)
         id: gate
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual run — skipping time gate."; exit 0
+            echo "Manual run — bypassing gate; will notify."
+            echo "notify=1" >> "$GITHUB_OUTPUT"; exit 0
           fi
           HOUR=$(TZ=America/New_York date +%H)
-          echo "New York hour: $HOUR"
-          if [ "$HOUR" != "09" ]; then
-            echo "Not 9am in New York — exiting."; echo "skip=true" >> "$GITHUB_OUTPUT"
+          DOW=$(TZ=America/New_York date +%u)   # 1=Mon .. 7=Sun
+          echo "New York: day-of-week=$DOW hour=$HOUR"
+          if [ "$DOW" -gt 5 ] || [ "$HOUR" -lt 9 ] || [ "$HOUR" -gt 18 ]; then
+            echo "Outside weekday 9am–6pm ET — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          # DM only on the 9am run; other business-hours runs refresh silently.
+          if [ "$HOUR" = "09" ]; then echo "notify=1" >> "$GITHUB_OUTPUT"; else echo "notify=0" >> "$GITHUB_OUTPUT"; fi
 
       - uses: actions/checkout@v4
         if: steps.gate.outputs.skip != 'true'
@@ -56,4 +61,5 @@ jobs:
           SLACK_CANVAS_ID: ${{ secrets.SLACK_CANVAS_ID }}
           SLACK_TEAM_ID: ${{ secrets.SLACK_TEAM_ID }}
           SLACK_DM_CHANNEL: ${{ secrets.SLACK_DM_CHANNEL }}
+          NOTIFY: ${{ steps.gate.outputs.notify }}
         run: python noram-leaderboard/leaderboard.py

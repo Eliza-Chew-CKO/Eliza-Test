@@ -32,7 +32,7 @@ from urllib.parse import urlparse
 import requests
 
 REGION = "NORAM"
-DEFAULT_CANVAS_ID = "F0BH3FS6THS"
+DEFAULT_CANVAS_ID = "F0BGZUDCJ0J"
 TOP_N = 10
 
 # Scope: opportunities where the first OR second owner's region is NORAM.
@@ -224,7 +224,13 @@ def notify(token, channel, text):
 # Main
 # --------------------------------------------------------------------------- #
 def main():
-    as_of = os.getenv("AS_OF_DATE") or __import__("datetime").date.today().isoformat()
+    # "As of" = today in America/New_York. The L90 window itself is always
+    # relative to the run (SOQL LAST_N_DAYS:90), so every run is a fresh
+    # rolling last-90-days as of the day it runs.
+    import datetime
+    from zoneinfo import ZoneInfo
+
+    as_of = os.getenv("AS_OF_DATE") or datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
 
     sf = get_salesforce_client()
     sections = []
@@ -251,8 +257,12 @@ def main():
         canvas_id = create_canvas(slack_token, f"NORAM L90 Leaderboard — updated {as_of}", markdown)
         log.info("New canvas: %s", canvas_id)
 
+    # DM the link only when NOTIFY is truthy (default on). The workflow sets
+    # NOTIFY=1 for the once-daily morning run and NOTIFY=0 for intraday
+    # refreshes so the canvas stays current without spamming the DM.
     dm = os.getenv("SLACK_DM_CHANNEL")
-    if dm:
+    notify_on = os.getenv("NOTIFY", "1").strip().lower() not in ("0", "false", "no", "")
+    if dm and notify_on:
         url = f"https://checkout.slack.com/docs/{os.getenv('SLACK_TEAM_ID','')}/{canvas_id}".rstrip("/")
         notify(slack_token, dm, f":trophy: NORAM L90 leaderboard refreshed for {as_of}. Canvas: {url}")
 

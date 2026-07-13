@@ -1,9 +1,14 @@
 # NORAM L90 Leaderboard → Slack canvas
 
 Recomputes the NORAM Last-90-day stage-movement leaderboard and rewrites a Slack
-canvas so a single, stable link always shows the latest numbers. Runs every
-morning at **9am America/New_York** via GitHub Actions
-(`.github/workflows/noram-leaderboard.yml`).
+canvas so a single, stable link always shows the latest numbers. Runs **hourly
+during weekday business hours (9am–6pm America/New_York)** via GitHub Actions
+(`.github/workflows/noram-leaderboard.yml`); the **9am** run also DMs the link,
+intraday runs refresh the canvas silently.
+
+The 90-day window is always relative to the run (SOQL `LAST_N_DAYS:90`) and the
+"as of" date is today in America/New_York — so it's a continuously rolling
+last-90-days, never pinned to a fixed date.
 
 ## What it measures
 
@@ -40,9 +45,12 @@ Slack:
 | Secret | Notes |
 |---|---|
 | `SLACK_TOKEN` | bot/user token with `canvases:write` (and `canvases:read`) |
-| `SLACK_CANVAS_ID` | canvas to rewrite (defaults to `F0BH3FS6THS` if unset) |
+| `SLACK_CANVAS_ID` | canvas to rewrite (defaults to `F0BGZUDCJ0J` if unset) |
 | `SLACK_TEAM_ID` | e.g. `T0251H42B` — only used to build the notify link |
 | `SLACK_DM_CHANNEL` | optional — user/channel id to ping with the link (e.g. `U0AGKMJTZ43`) |
+
+`NOTIFY` (env, set by the workflow) controls the DM: `1` sends it, `0` refreshes
+the canvas silently. Defaults to on for local/manual runs.
 
 ## Run locally
 
