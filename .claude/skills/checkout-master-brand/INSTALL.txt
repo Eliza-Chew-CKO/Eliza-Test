@@ -1,0 +1,15 @@
+checkout-master-brand — install notes
+=====================================
+
+RENDER STEP: Python 3 standard library only. No pip installs required.
+
+OPTIONAL (for non-native inputs like .docx / .pdf / Google Doc exports):
+  markitdown   →   pipx install markitdown   (or: pip install markitdown)
+  Used to convert those formats to Markdown BEFORE feeding build.py.
+  Native inputs (.md / .html / .txt) need nothing extra.
+
+FONTS: Output links Roboto Mono + Inter from Google Fonts (needs a connection).
+Offline, it falls back to system monospace / sans. Install the fonts locally
+for pixel-perfect rendering.
+
+VIEW / EXPORT: Open the .html in any browser. For a PDF: Print → Save as PDF.

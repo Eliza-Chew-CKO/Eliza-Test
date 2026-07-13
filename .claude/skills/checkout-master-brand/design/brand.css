@@ -1,0 +1,165 @@
+/* ============================================================
+   Checkout.com — Master Brand · Document Design System
+   Built by Billy Newton & Andrey Klochkov
+   Self-contained stylesheet. Pair with logo.svg (recolourable
+   via --cko-module / --cko-symbol / --cko-word).
+   ============================================================ */
+
+:root{
+  /* --- Blues --- */
+  --blue-1:#186AFF;  /* primary brand blue (source ships #006CFF) */
+  --blue-2:#4098FF;
+  --blue-3:#70B2FF;
+  --blue-4:#A0CCFF;
+  --blue-5:#CFE5FF;
+
+  /* --- Neutrals --- */
+  --white:#FFFFFF;
+  --off-white:#F4F2F2;  /* page background */
+  --off-black:#272932;  /* primary text */
+  --deep-black:#181818;
+  --grey-1:#E8E6E6;
+  --grey-3:#D7D3D3;
+  --grey-6:#777478;     /* captions / muted */
+  --grey-7:#5C5B61;
+  --grey-8:#424249;
+
+  /* --- Status vocabulary (bg / text pairs) --- */
+  --ok-bg:#EEFFCC;      --ok-text:#224D00;      /* Yes / Pass / Signed off */
+  --review-bg:#CFE5FF;  --review-text:#186AFF;  /* In review */
+  --pending-bg:#FFC8B2; --pending-text:#661D00; /* TBC / Blocked */
+  --fail-bg:#FFCCF5;    --fail-text:#830269;    /* Fail */
+  --neutral-bg:#E8E6E6; --neutral-text:#5C5B61; /* No / Not run / Draft */
+
+  /* --- Type --- */
+  --mono:'Roboto Mono','SFMono-Regular',Consolas,'Courier New',monospace;
+  --sans:Inter,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;
+
+  /* --- Shape --- */
+  --radius:8px;
+
+  /* --- Logo channels (override per placement) --- */
+  --cko-module:#186AFF;
+  --cko-symbol:#FFFFFF;
+  --cko-word:#272932;
+
+  /* --- Dark mode (values from the 1-pager editor platform) --- */
+  --dark-bg:#181818;      /* chkDark — page background */
+  --dark-text:#FFFFFF;    /* text */
+  --dark-box:#22242A;     /* chkDarkBox — image placeholder / cards */
+}
+
+/* --- Dark colourway: add class="dark" to <body> --- */
+body.dark{background:var(--dark-bg);color:var(--dark-text);--cko-word:#FFFFFF}
+.dark .card,.dark .cover,.dark .panel,.dark .approach-item,.dark .take,
+.dark .img-placeholder{background:var(--dark-box);border-color:transparent}
+.dark .hdr .doc,.dark .caption,.dark .ftr{color:var(--chk-gray-text,#9CA3AF)}
+.dark th{border-bottom-color:var(--dark-text)}
+.dark tr.cat td{background:var(--dark-box)}
+.dark code,.dark .code-inline{background:var(--dark-box)}
+.dark pre{background:var(--dark-box)}
+.dark .node{background:var(--dark-box);border-color:transparent}
+.dark .cover .subtitle,.dark .meta .k,.dark .sw .l{color:#9CA3AF}
+.dark .hairline{border-top-color:var(--dark-box)}
+.dark td,.dark .spec div{border-bottom-color:#2E3036}
+.dark .sw{background:var(--dark-box);border-color:transparent}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--off-white);color:var(--off-black);font:14px/1.55 var(--sans)}
+.page{max-width:840px;margin:0 auto;padding:32px 28px 64px}
+
+/* --- Headings --- */
+h1{font:700 21.9px/1.1 var(--mono);letter-spacing:.02em;text-transform:uppercase;margin:44px 0 12px}  /* leading −10% for multi-line */
+h2{font:700 16px var(--mono);letter-spacing:.02em;text-transform:uppercase;margin:32px 0 10px}
+h3{font:500 14.5px var(--sans);margin:20px 0 8px}   /* Inter Medium */
+h4{font:700 12px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--grey-7);margin:16px 0 6px}
+.num{color:var(--blue-1);margin-right:10px}         /* numbered section prefix */
+p{margin:0 0 10px}
+.caption{font-size:11px;color:var(--grey-6)}
+a{color:var(--blue-1);font-weight:700;text-decoration:none}
+a:hover{text-decoration:underline}
+.card{background:var(--white);border-radius:12px;padding:20px 22px;margin:12px 0}
+.hairline{border:0;border-top:1px solid var(--grey-1);margin:28px 0}
+
+/* --- Header / footer --- */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+.hdr svg{height:40px;width:auto;display:block}
+.hdr .doc{font:700 10px/1.5 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);
+  text-align:right;max-width:55%;padding-left:20px}
+.ftr{display:flex;justify-content:space-between;font-size:11px;color:var(--grey-6);padding-top:10px;border-top:1px solid var(--grey-1)}
+
+/* --- Tags / pills --- */
+.tag{display:inline-block;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 10px;border-radius:999px;white-space:nowrap}
+.tag.solid{background:var(--blue-1);color:#fff}
+.tag.dark{background:var(--off-black);color:#fff}
+.tag.outline{background:#fff;border:1px solid var(--grey-3);color:var(--off-black)}
+.tag.ok{background:var(--ok-bg);color:var(--ok-text)}
+.tag.yes{background:var(--blue-5);color:var(--blue-1)}   /* "Yes" is brand blue */
+.tag.review{background:var(--review-bg);color:var(--review-text)}
+.tag.pending{background:var(--pending-bg);color:var(--pending-text)}
+.tag.fail{background:var(--fail-bg);color:var(--fail-text)}
+.tag.neutral{background:var(--neutral-bg);color:var(--neutral-text)}
+
+/* --- Cover --- */
+.cover{background:var(--off-white);border:1px solid var(--grey-1);border-radius:12px;padding:36px 34px}
+.cover svg{width:42%;max-width:280px;height:auto;display:block;margin-bottom:34px}
+.cover .title{font:700 28px/1.08 var(--mono);letter-spacing:.02em;text-transform:uppercase;margin:14px 0 8px}  /* leading −10% */
+.cover .subtitle{font-size:15px;line-height:1.47;color:var(--grey-8);margin-bottom:26px}  /* leading −5% vs body 1.55 */
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
+.meta .k{font:700 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);margin-bottom:3px}
+.meta .v{font-size:13px}
+
+/* --- Palette swatches --- */
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.sw{width:96px;border-radius:8px;overflow:hidden;border:1px solid var(--grey-1);background:#fff}
+.sw .c{height:44px}
+.sw .l{padding:5px 8px;font:700 8.5px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--grey-6)}
+
+/* --- Logo colourways --- */
+.logos{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.lg{border-radius:12px;padding:26px;display:flex;align-items:center;justify-content:center}
+.lg svg{width:78%;height:auto}
+.lg.light{background:var(--off-white);border:1px solid var(--grey-1)}
+.lg.dark{background:var(--off-black);--cko-word:#FFFFFF}
+.lg.blue{background:var(--blue-1);--cko-module:#FFFFFF;--cko-symbol:#186AFF;--cko-word:#FFFFFF}
+.lg.mono{background:var(--off-white);border:1px solid var(--grey-1);--cko-module:#272932}
+
+/* --- Type specimen --- */
+.spec div{padding:7px 0;border-bottom:1px solid var(--grey-1)}
+.spec .t-title{font:700 24px var(--mono);letter-spacing:.02em;text-transform:uppercase}
+.spec .t-h1{font:700 19px var(--mono);letter-spacing:.02em;text-transform:uppercase}
+.spec .t-h2{font:700 16px var(--mono);letter-spacing:.02em;text-transform:uppercase}
+.spec .t-h3{font:500 14.5px var(--sans)}
+.spec .t-body{font:14px var(--sans)}
+.spec .t-cap{font:11px var(--sans);color:var(--grey-6)}
+.spec .t-code{font:12px var(--mono)}
+
+/* --- Tables --- */
+table{width:100%;border-collapse:collapse;font-size:13px}
+caption{caption-side:top;text-align:left;font:700 12px var(--mono);letter-spacing:.02em;text-transform:uppercase;padding-bottom:10px}
+th{text-align:left;font-weight:700;padding:8px 10px 8px 0;border-bottom:1.5px solid var(--off-black)}
+td{padding:9px 10px 9px 0;border-bottom:.5px solid var(--grey-1);vertical-align:top}
+tr.cat td{background:var(--off-white);font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:6px 10px 6px 0}
+code,.code-inline{font-family:var(--mono);font-size:12px;background:var(--off-white);padding:1px 6px;border-radius:4px}
+
+/* --- Callouts --- */
+.callout{border-radius:var(--radius);padding:13px 16px;margin:10px 0;color:var(--off-black)}  /* tint bgs stay light — keep text dark even in dark mode */
+.callout .lbl{font:700 10px var(--mono);letter-spacing:.08em;margin-bottom:4px}
+.callout.info{background:var(--blue-5)}
+.callout.info .lbl{color:var(--blue-1)}
+.callout.warn{background:var(--pending-bg)}
+.callout.warn .lbl{color:var(--pending-text)}
+
+/* --- Code block --- */
+pre{background:var(--off-black);color:var(--off-white);font:12px/1.6 var(--mono);
+  border-radius:var(--radius);padding:16px 18px;overflow-x:auto;margin:10px 0}
+pre .k{color:var(--blue-3)}   /* keys */
+pre .s{color:#D4FF80}         /* strings */
+pre .p{color:#C6C1C1}         /* punctuation */
+
+/* --- Diagram nodes --- */
+.flow{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.node{background:#fff;border:1px solid var(--grey-3);border-radius:8px;padding:10px 14px;font-size:12.5px}
+.node.cko{background:var(--off-black);color:#fff}
+.arrow{color:var(--blue-1);font:700 14px var(--mono);padding:0 10px}

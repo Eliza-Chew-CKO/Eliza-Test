@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Uphold Visa CE 3.0 Initial Findings</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Checkout.com — Master Brand · Document Design System
+   Built by Billy Newton & Andrey Klochkov
+   Self-contained stylesheet. Pair with logo.svg (recolourable
+   via --cko-module / --cko-symbol / --cko-word).
+   ============================================================ */
+
+:root{
+  /* --- Blues --- */
+  --blue-1:#186AFF;  /* primary brand blue (source ships #006CFF) */
+  --blue-2:#4098FF;
+  --blue-3:#70B2FF;
+  --blue-4:#A0CCFF;
+  --blue-5:#CFE5FF;
+
+  /* --- Neutrals --- */
+  --white:#FFFFFF;
+  --off-white:#F4F2F2;  /* page background */
+  --off-black:#272932;  /* primary text */
+  --deep-black:#181818;
+  --grey-1:#E8E6E6;
+  --grey-3:#D7D3D3;
+  --grey-6:#777478;     /* captions / muted */
+  --grey-7:#5C5B61;
+  --grey-8:#424249;
+
+  /* --- Status vocabulary (bg / text pairs) --- */
+  --ok-bg:#EEFFCC;      --ok-text:#224D00;      /* Yes / Pass / Signed off */
+  --review-bg:#CFE5FF;  --review-text:#186AFF;  /* In review */
+  --pending-bg:#FFC8B2; --pending-text:#661D00; /* TBC / Blocked */
+  --fail-bg:#FFCCF5;    --fail-text:#830269;    /* Fail */
+  --neutral-bg:#E8E6E6; --neutral-text:#5C5B61; /* No / Not run / Draft */
+
+  /* --- Type --- */
+  --mono:'Roboto Mono','SFMono-Regular',Consolas,'Courier New',monospace;
+  --sans:Inter,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;
+
+  /* --- Shape --- */
+  --radius:8px;
+
+  /* --- Logo channels (override per placement) --- */
+  --cko-module:#186AFF;
+  --cko-symbol:#FFFFFF;
+  --cko-word:#272932;
+
+  /* --- Dark mode (values from the 1-pager editor platform) --- */
+  --dark-bg:#181818;      /* chkDark — page background */
+  --dark-text:#FFFFFF;    /* text */
+  --dark-box:#22242A;     /* chkDarkBox — image placeholder / cards */
+}
+
+/* --- Dark colourway: add class="dark" to <body> --- */
+body.dark{background:var(--dark-bg);color:var(--dark-text);--cko-word:#FFFFFF}
+.dark .card,.dark .cover,.dark .panel,.dark .approach-item,.dark .take,
+.dark .img-placeholder{background:var(--dark-box);border-color:transparent}
+.dark .hdr .doc,.dark .caption,.dark .ftr{color:var(--chk-gray-text,#9CA3AF)}
+.dark th{border-bottom-color:var(--dark-text)}
+.dark tr.cat td{background:var(--dark-box)}
+.dark code,.dark .code-inline{background:var(--dark-box)}
+.dark pre{background:var(--dark-box)}
+.dark .node{background:var(--dark-box);border-color:transparent}
+.dark .cover .subtitle,.dark .meta .k,.dark .sw .l{color:#9CA3AF}
+.dark .hairline{border-top-color:var(--dark-box)}
+.dark td,.dark .spec div{border-bottom-color:#2E3036}
+.dark .sw{background:var(--dark-box);border-color:transparent}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--off-white);color:var(--off-black);font:14px/1.55 var(--sans)}
+.page{max-width:840px;margin:0 auto;padding:32px 28px 64px}
+
+/* --- Headings --- */
+h1{font:700 21.9px/1.1 var(--mono);letter-spacing:.02em;text-transform:uppercase;margin:44px 0 12px}  /* leading −10% for multi-line */
+h2{font:700 16px var(--mono);letter-spacing:.02em;text-transform:uppercase;margin:32px 0 10px}
+h3{font:500 14.5px var(--sans);margin:20px 0 8px}   /* Inter Medium */
+h4{font:700 12px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--grey-7);margin:16px 0 6px}
+.num{color:var(--blue-1);margin-right:10px}         /* numbered section prefix */
+p{margin:0 0 10px}
+.caption{font-size:11px;color:var(--grey-6)}
+a{color:var(--blue-1);font-weight:700;text-decoration:none}
+a:hover{text-decoration:underline}
+.card{background:var(--white);border-radius:12px;padding:20px 22px;margin:12px 0}
+.hairline{border:0;border-top:1px solid var(--grey-1);margin:28px 0}
+
+/* --- Header / footer --- */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+.hdr svg{height:40px;width:auto;display:block}
+.hdr .doc{font:700 10px/1.5 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);
+  text-align:right;max-width:55%;padding-left:20px}
+.ftr{display:flex;justify-content:space-between;font-size:11px;color:var(--grey-6);padding-top:10px;border-top:1px solid var(--grey-1)}
+
+/* --- Tags / pills --- */
+.tag{display:inline-block;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 10px;border-radius:999px;white-space:nowrap}
+.tag.solid{background:var(--blue-1);color:#fff}
+.tag.dark{background:var(--off-black);color:#fff}
+.tag.outline{background:#fff;border:1px solid var(--grey-3);color:var(--off-black)}
+.tag.ok{background:var(--ok-bg);color:var(--ok-text)}
+.tag.yes{background:var(--blue-5);color:var(--blue-1)}   /* "Yes" is brand blue */
+.tag.review{background:var(--review-bg);color:var(--review-text)}
+.tag.pending{background:var(--pending-bg);color:var(--pending-text)}
+.tag.fail{background:var(--fail-bg);color:var(--fail-text)}
+.tag.neutral{background:var(--neutral-bg);color:var(--neutral-text)}
+
+/* --- Cover --- */
+.cover{background:var(--off-white);border:1px solid var(--grey-1);border-radius:12px;padding:36px 34px}
+.cover svg{width:42%;max-width:280px;height:auto;display:block;margin-bottom:34px}
+.cover .title{font:700 28px/1.08 var(--mono);letter-spacing:.02em;text-transform:uppercase;margin:14px 0 8px}  /* leading −10% */
+.cover .subtitle{font-size:15px;line-height:1.47;color:var(--grey-8);margin-bottom:26px}  /* leading −5% vs body 1.55 */
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
+.meta .k{font:700 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);margin-bottom:3px}
+.meta .v{font-size:13px}
+
+/* --- Palette swatches --- */
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.sw{width:96px;border-radius:8px;overflow:hidden;border:1px solid var(--grey-1);background:#fff}
+.sw .c{height:44px}
+.sw .l{padding:5px 8px;font:700 8.5px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--grey-6)}
+
+/* --- Logo colourways --- */
+.logos{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.lg{border-radius:12px;padding:26px;display:flex;align-items:center;justify-content:center}
+.lg svg{width:78%;height:auto}
+.lg.light{background:var(--off-white);border:1px solid var(--grey-1)}
+.lg.dark{background:var(--off-black);--cko-word:#FFFFFF}
+.lg.blue{background:var(--blue-1);--cko-module:#FFFFFF;--cko-symbol:#186AFF;--cko-word:#FFFFFF}
+.lg.mono{background:var(--off-white);border:1px solid var(--grey-1);--cko-module:#272932}
+
+/* --- Type specimen --- */
+.spec div{padding:7px 0;border-bottom:1px solid var(--grey-1)}
+.spec .t-title{font:700 24px var(--mono);letter-spacing:.02em;text-transform:uppercase}
+.spec .t-h1{font:700 19px var(--mono);letter-spacing:.02em;text-transform:uppercase}
+.spec .t-h2{font:700 16px var(--mono);letter-spacing:.02em;text-transform:uppercase}
+.spec .t-h3{font:500 14.5px var(--sans)}
+.spec .t-body{font:14px var(--sans)}
+.spec .t-cap{font:11px var(--sans);color:var(--grey-6)}
+.spec .t-code{font:12px var(--mono)}
+
+/* --- Tables --- */
+table{width:100%;border-collapse:collapse;font-size:13px}
+caption{caption-side:top;text-align:left;font:700 12px var(--mono);letter-spacing:.02em;text-transform:uppercase;padding-bottom:10px}
+th{text-align:left;font-weight:700;padding:8px 10px 8px 0;border-bottom:1.5px solid var(--off-black)}
+td{padding:9px 10px 9px 0;border-bottom:.5px solid var(--grey-1);vertical-align:top}
+tr.cat td{background:var(--off-white);font:700 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:6px 10px 6px 0}
+code,.code-inline{font-family:var(--mono);font-size:12px;background:var(--off-white);padding:1px 6px;border-radius:4px}
+
+/* --- Callouts --- */
+.callout{border-radius:var(--radius);padding:13px 16px;margin:10px 0;color:var(--off-black)}  /* tint bgs stay light — keep text dark even in dark mode */
+.callout .lbl{font:700 10px var(--mono);letter-spacing:.08em;margin-bottom:4px}
+.callout.info{background:var(--blue-5)}
+.callout.info .lbl{color:var(--blue-1)}
+.callout.warn{background:var(--pending-bg)}
+.callout.warn .lbl{color:var(--pending-text)}
+
+/* --- Code block --- */
+pre{background:var(--off-black);color:var(--off-white);font:12px/1.6 var(--mono);
+  border-radius:var(--radius);padding:16px 18px;overflow-x:auto;margin:10px 0}
+pre .k{color:var(--blue-3)}   /* keys */
+pre .s{color:#D4FF80}         /* strings */
+pre .p{color:#C6C1C1}         /* punctuation */
+
+/* --- Diagram nodes --- */
+.flow{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.node{background:#fff;border:1px solid var(--grey-3);border-radius:8px;padding:10px 14px;font-size:12.5px}
+.node.cko{background:var(--off-black);color:#fff}
+.arrow{color:var(--blue-1);font:700 14px var(--mono);padding:0 10px}
+
+/* ============================================================
+   Checkout.com — Master Brand · HTML bridge layer
+   Appended by build.py for HTML inputs only.
+
+   Source HTML keeps its markup verbatim — including class
+   names — but we strip its stylesheet. This bridge repaints
+   COMMON document-pattern classes (panels, meta grids, metric
+   bars, pills, takeaway cards, steps…) with brand tokens so
+   class-based layouts don't collapse. Purely presentational:
+   zero content changes. Unknown classes simply flow as clean
+   unstyled blocks.
+   ============================================================ */
+
+/* --- page scaffolding --- */
+.shell,main{display:block}
+section{margin:26px 0}
+.hero{display:grid;grid-template-columns:1.8fr 1fr;gap:12px;align-items:stretch;margin:12px 0}
+@media(max-width:720px){.hero{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+
+/* --- panels / cards --- */
+.panel{background:var(--white);border-radius:12px;padding:20px 22px;min-width:0;overflow-x:auto}
+.hero .panel{margin:0}
+.panel table{font-size:12px}
+.panel th,.panel td{padding:7px 8px 7px 0}
+/* a panel holding a table needs the full row — don't squeeze data */
+.grid .panel:has(table){grid-column:1/-1}
+
+/* --- eyebrows, titles, steps, section intros --- */
+.eyebrow,.step,.signal-badge{font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);margin-bottom:8px}
+.step{color:var(--blue-1);margin-bottom:4px}
+.signal-badge{color:var(--blue-1)}
+.title{margin-top:0}
+.subtitle{font-size:14px;line-height:1.47;color:var(--grey-8)}  /* leading −5% vs body 1.55 */
+.section-title{margin-top:0}
+.section-intro{color:var(--grey-8)}
+.footer-note{font-size:11px;color:var(--grey-6);border-top:1px solid var(--grey-1);padding-top:10px;margin-top:14px}
+
+/* --- meta grids (label / value / sub) --- */
+.meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-top:18px}
+.meta-label{font:700 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);margin-bottom:1px}
+.meta-value{font:700 20px/1.15 var(--sans)}
+.meta-sub{font-size:10.5px;color:var(--grey-6)}
+
+/* --- signal / stat card --- */
+.signal-card{display:flex;flex-direction:column;justify-content:space-between}
+.signal-big{font:700 39px/1.1 var(--mono);letter-spacing:.02em;margin:2px 0 8px}
+.signal-copy{font-size:12.5px}
+
+/* --- approach / step lists --- */
+.approach-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px}
+.approach-item{background:var(--off-white);border:1px solid var(--grey-1);border-radius:var(--radius);padding:14px 16px}
+.approach-item p{font-size:12.5px;margin:6px 0 0}
+
+/* --- takeaway cards --- */
+.takeaways{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px}
+.take{background:var(--off-white);border:1px solid var(--grey-1);border-radius:var(--radius);padding:14px 16px}
+.take h3{margin:0 0 6px;font:500 13px var(--sans)}
+.take p{font-size:12.5px;margin:0}
+/* tint bgs stay light — keep ALL text dark inside, even in dark mode */
+.take.positive{background:var(--ok-bg);border-color:transparent;color:var(--ok-text)}
+.take.positive h3,.take.positive p{color:var(--ok-text)}
+.take.caution{background:var(--pending-bg);border-color:transparent;color:var(--pending-text)}
+.take.caution h3,.take.caution p{color:var(--pending-text)}
+
+/* --- metric rows with bars --- */
+.metric-row{margin:16px 0}
+.metric-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.metric-label{font:600 13px var(--sans)}
+.metric-note{font-size:11px;color:var(--grey-6)}
+.bar-track{position:relative;height:10px;background:var(--grey-1);border-radius:999px;overflow:visible}
+.bar-fill{position:absolute;top:0;left:0;height:100%;border-radius:999px;background:var(--blue-1)}
+.bar-fill.positive{background:var(--blue-1)}
+.bar-fill.neutral{background:var(--grey-6)}
+.bar-benchmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--off-black)}
+.metric-values{display:flex;justify-content:space-between;font:700 13px var(--mono);margin-top:6px}
+.metric-values .benchmark,.benchmark{font:400 11px var(--sans);color:var(--grey-6)}
+
+/* --- pills (map to brand status pairs) --- */
+.pill{display:inline-block;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 10px;border-radius:999px;white-space:nowrap;background:var(--neutral-bg);color:var(--neutral-text)}
+.pill.pos{background:var(--ok-bg);color:var(--ok-text)}
+.pill.neu{background:var(--neutral-bg);color:var(--neutral-text)}
+.pill.warn{background:var(--pending-bg);color:var(--pending-text)}
+
+/* --- dark colourway (mirrors brand.css's .dark section) --- */
+.dark .subtitle,.dark .section-intro{color:#9CA3AF}
+.dark .eyebrow,.dark .meta-label,.dark .meta-sub,.dark .metric-note,
+.dark .benchmark,.dark .metric-values .benchmark,.dark .footer-note{color:#9CA3AF}
+.dark .footer-note{border-top-color:#2E3036}
+.dark .bar-benchmark{background:var(--dark-text)}
+
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hdr">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 143 24" fill="none">
+<path class="cko-module" d="M21.0909 0H2.90909C1.30909 0 0 1.30909 0 2.90909V21.0909C0 22.6909 1.30909 24 2.90909 24H21.0909C22.6909 24 24 22.6909 24 21.0909V2.90909C24 1.30909 22.6909 0 21.0909 0Z" fill="var(--cko-module, #186AFF)"/>
+<path class="cko-symbol" d="M14.2547 12.1819C14.1678 12.0077 14.1629 11.8941 14.2547 11.7092L17.8911 5.49098C18.0729 5.16371 17.8547 4.69098 17.4183 4.69098H9.34561C9.16379 4.69098 9.00954 4.78016 8.90925 4.94552L4.83652 11.6728C4.73933 11.8392 4.74288 12.0523 4.83652 12.2182L8.90925 18.9455C8.99888 19.1113 9.14809 19.2001 9.34561 19.2001H17.4183C17.8183 19.2001 18.0729 18.7637 17.8911 18.4001L14.2547 12.1819ZM16.0365 6.0728L13.382 10.6183L10.7274 6.0728H16.0365ZM6.29107 12.0001L9.41834 6.76371L12.4729 12.0001L9.41834 17.2364L6.29107 12.0001ZM10.7638 17.9273L13.4183 13.3819L16.0729 17.9273H10.7638Z" fill="var(--cko-symbol, #FFFFFF)"/>
+<g class="cko-word" fill="var(--cko-word, #272932)">
+<path d="M36.1708 7.35574C37.7858 7.35574 38.8309 8.11853 39.3659 9.68778L39.4071 9.80851L41.5151 9.24495L41.4822 9.11462C40.8544 6.62172 38.9187 5.19168 36.1717 5.19133C34.5559 5.16966 33.0437 5.77584 31.9316 6.88984C30.696 8.12705 30.057 9.86107 30.0838 11.9008C30.057 13.9442 30.696 15.6785 31.9316 16.9158C33.0271 18.0131 34.5044 18.6146 36.0973 18.6146C36.1218 18.6146 36.1463 18.6146 36.1708 18.6143C38.9183 18.6143 40.8542 17.1842 41.4822 14.691L41.5151 14.5606L39.4071 13.9971L39.3659 14.1178C38.8309 15.6871 37.7858 16.4498 36.1708 16.4498C33.8645 16.4498 32.4318 14.7073 32.4318 11.9026C32.4318 9.09793 33.8645 7.35574 36.1708 7.35574Z"/>
+<path d="M47.7285 8.79119C46.5433 8.79119 45.4858 9.33026 44.8162 10.2546V5.19141H42.5968V18.4673H44.8162V14.4006C44.8162 11.8949 46.0117 10.7536 47.1225 10.7536C48.082 10.7536 48.5289 11.2763 48.5289 12.3988V18.4673H50.7484V11.7926C50.7484 9.8853 49.6477 8.79119 47.7285 8.79119Z"/>
+<path d="M56.2255 8.79117C53.1537 8.79117 51.7546 11.3373 51.7546 13.7027C51.7546 16.0682 53.1537 18.6143 56.2255 18.6143C58.2677 18.6143 59.6145 17.7429 60.4636 15.8714L60.523 15.7404L58.6796 15.0199L58.6219 15.1246C58.0254 16.2095 57.3576 16.652 56.3173 16.652C55.0529 16.652 54.2247 15.8167 54.028 14.3533H60.6044V13.4087C60.6044 11.114 59.1003 8.79117 56.2255 8.79117ZM56.2255 10.7535C57.3176 10.7535 58.055 11.3725 58.3167 12.501H54.1411C54.4451 11.403 55.2143 10.7535 56.2255 10.7535Z"/>
+<path d="M68.4997 15.0951C67.9888 16.1718 67.3074 16.652 66.2905 16.652C64.8923 16.652 64.0576 15.5493 64.0576 13.7027C64.0576 11.8562 64.8923 10.7535 66.2905 10.7535C67.3118 10.7535 68.0135 11.2475 68.499 12.3086L68.5537 12.4282L70.5258 11.6101L70.4762 11.4851C69.7749 9.72263 68.3274 8.79117 66.2905 8.79117C63.5835 8.79117 61.7646 10.7649 61.7646 13.7027C61.7646 16.6406 63.5835 18.6143 66.2905 18.6143C68.3226 18.6143 69.7701 17.6765 70.4762 15.902L70.5263 15.7759L68.5549 14.979L68.4997 15.0951Z"/>
+<path d="M79.4196 8.93821H76.6661L73.5954 12.4744V5.19141H71.3758V18.4673H73.5954V14.2077L76.9374 18.4673H79.6782L75.5116 13.3391L79.4196 8.93821Z"/>
+<path d="M84.0542 8.79117C81.2708 8.79117 79.3266 10.8111 79.3266 13.7027C79.3266 16.5944 81.2708 18.6143 84.0542 18.6143C86.838 18.6143 88.7822 16.5944 88.7822 13.7027C88.7822 10.8111 86.838 8.79117 84.0542 8.79117ZM85.8191 15.8057C85.3877 16.3753 84.8106 16.652 84.0542 16.652C83.2964 16.652 82.6966 16.3672 82.2712 15.8057C81.8326 15.2272 81.6196 14.5394 81.6196 13.7027C81.6196 12.8665 81.8326 12.1782 82.2712 11.5994C82.6966 11.038 83.2964 10.7535 84.0542 10.7535C84.8103 10.7535 85.3877 11.0302 85.8191 11.5994C86.2577 12.1782 86.4708 12.8665 86.4708 13.7027C86.4708 14.5394 86.2577 15.2272 85.8191 15.8057Z"/>
+<path d="M95.7377 12.8764C95.7377 15.0994 94.8119 16.652 93.4863 16.652C92.5772 16.652 92.135 16.1378 92.135 15.0802V8.9382H89.9156V15.6129C89.9156 17.4641 91.0587 18.6143 92.8985 18.6143C93.971 18.6143 94.9866 18.0802 95.7377 17.1349V18.4673H97.9387V8.9382H95.7377V12.8764Z"/>
+<path d="M104.506 16.4325C104.264 16.5781 103.96 16.652 103.603 16.652C102.836 16.652 102.509 16.2425 102.509 15.2823V10.9006H104.97V8.93822H102.509V5.08026L100.289 6.48296V8.93822H98.8017V10.9006H100.289V15.2454C100.289 17.418 101.433 18.6144 103.511 18.6144C104.105 18.6144 104.638 18.4982 105.097 18.2695L105.198 18.2188L104.659 16.3409L104.506 16.4325Z"/>
+<path d="M107.362 15.5682C106.506 15.5682 105.885 16.1971 105.885 17.0636C105.885 17.9162 106.52 18.5593 107.362 18.5593C108.239 18.5593 108.876 17.9304 108.876 17.0636C108.876 16.1971 108.239 15.5682 107.362 15.5682Z"/>
+<path d="M116.262 15.0951C115.751 16.1718 115.07 16.652 114.052 16.652C112.654 16.652 111.82 15.5493 111.82 13.7027C111.82 11.8562 112.654 10.7535 114.052 10.7535C115.074 10.7535 115.775 11.2475 116.261 12.3086L116.316 12.4282L118.288 11.6101L118.238 11.4851C117.537 9.72263 116.09 8.79117 114.052 8.79117C111.345 8.79117 109.527 10.7649 109.527 13.7027C109.527 16.6406 111.345 18.6143 114.052 18.6143C116.085 18.6143 117.532 17.6765 118.238 15.902L118.288 15.7759L116.317 14.979L116.262 15.0951Z"/>
+<path d="M123.672 8.79117C120.888 8.79117 118.944 10.8111 118.944 13.7027C118.944 16.5944 120.888 18.6143 123.672 18.6143C126.455 18.6143 128.4 16.5944 128.4 13.7027C128.4 10.8111 126.455 8.79117 123.672 8.79117ZM125.437 15.8057C125.005 16.3753 124.428 16.652 123.672 16.652C122.914 16.652 122.314 16.3672 121.889 15.8057C121.45 15.2272 121.237 14.5394 121.237 13.7027C121.237 12.8665 121.45 12.1782 121.889 11.5994C122.314 11.038 122.914 10.7535 123.672 10.7535C124.428 10.7535 125.005 11.0302 125.437 11.5994C125.875 12.1782 126.088 12.8665 126.088 13.7027C126.088 14.5394 125.875 15.2272 125.437 15.8057Z"/>
+<path d="M139.855 8.79117C138.759 8.79117 137.712 9.44174 137.008 10.5465C136.583 9.41155 135.667 8.79117 134.401 8.79117C133.36 8.79117 132.488 9.27554 131.8 10.2322V8.93819H129.581V18.4673H131.8V14.7312C131.8 12.315 132.619 10.7535 133.886 10.7535C134.694 10.7535 135.054 11.1818 135.054 12.1417V18.4673H137.255V14.5841C137.255 12.2929 138.093 10.7535 139.341 10.7535C140.148 10.7535 140.509 11.1818 140.509 12.1417V18.4673H142.71V11.8295C142.71 9.89877 141.669 8.79117 139.855 8.79117Z"/>
+</g>
+</svg>
+    <span class="doc">UPHOLD VISA CE 3.0 INITIAL FINDINGS</span>
+  </div>
+  <hr class="hairline" style="margin-top:0">
+
+<main class="shell">
+    <section class="hero">
+      <div class="panel">
+        <div class="eyebrow">Initial findings · Visa Compelling Evidence 3.0</div>
+        <h1 class="title">Early signal looks encouraging, but coverage is still too small to prove portfolio impact.</h1>
+        <p class="subtitle">This is a high-level directional read based only on the weekly Visa dispute extract provided. The aim is not to prove causality, but to assess whether there are enough positive signs to keep leaning in.</p>
+        <div class="meta-grid">
+          <div class="meta"><div class="meta-label">Period covered</div><div class="meta-value">05 Jan</div><div class="meta-sub">to 06 Jul 2026</div></div>
+          <div class="meta"><div class="meta-label">Weekly cohorts</div><div class="meta-value">27</div><div class="meta-sub">from the extract</div></div>
+          <div class="meta"><div class="meta-label">CE 3.0 dispute share</div><div class="meta-value">0.7%</div><div class="meta-sub">of all disputes in file</div></div>
+          <div class="meta"><div class="meta-label">Best positive signal</div><div class="meta-value">59.4%</div><div class="meta-sub">overall win rate on successful CE 3.0-tagged cases</div></div>
+        </div>
+      </div>
+      <div class="panel signal-card">
+        <div>
+          <div class="signal-badge">Most encouraging read</div>
+          <div class="signal-big">19/32</div>
+          <p class="signal-copy">Successful CE 3.0-tagged cases have converted into wins at a materially higher rate than the broad non-CE baseline in this dataset. That is the clearest reason to keep exploring the programme.</p>
+        </div>
+        <div class="footer-note">This should be framed as an initial directional signal, not proof. The dataset is small, recent cohorts are immature, and CE 3.0 only touches a very small slice of total disputes.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">How we approached it</h2>
+      <p class="section-intro">Given the data constraints, we used a deliberately simple lens: look for directional evidence rather than statistical proof.</p>
+      <div class="approach-list">
+        <div class="approach-item"><div class="step">Step 1</div><strong>Separate CE 3.0-tagged cases from the baseline</strong><p>We treated <em>successful</em> and <em>fallback</em> as the CE 3.0-touched population and compared them against the larger non-labelled baseline.</p></div>
+        <div class="approach-item"><div class="step">Step 2</div><strong>Look at representment and win outcomes</strong><p>We focused on whether successful CE 3.0 cases appear to convert to representation and wins at stronger rates than the baseline.</p></div>
+        <div class="approach-item"><div class="step">Step 3</div><strong>Sanity-check mature cohorts separately</strong><p>Because recent dispute weeks have not fully matured, we also isolated older cohorts to see whether the positive signal persists once outcomes have had time to resolve.</p></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2 class="section-title">What looks positive</h2>
+        <p class="section-intro">The headline read is not that CE 3.0 is proven, but that the cases it touches appear promising.</p>
+        <div class="metric-row">
+      <div class="metric-head"><div class="metric-label">Overall win rate on successful CE 3.0 cases</div><div class="metric-note">19 wins from 32 successful-tagged disputes</div></div>
+      <div class="bar-track"><div class="bar-fill positive" style="width:59.4%"></div><div class="bar-benchmark" style="left:29.6%"></div></div>
+      <div class="metric-values"><span>59.4%</span><span class="benchmark">baseline 29.6%</span></div>
+    </div>
+        <div class="metric-row">
+      <div class="metric-head"><div class="metric-label">Win rate on mature successful CE 3.0 cohorts</div><div class="metric-note">19 wins from 20 mature successful-tagged disputes</div></div>
+      <div class="bar-track"><div class="bar-fill positive" style="width:95.0%"></div><div class="bar-benchmark" style="left:37.4%"></div></div>
+      <div class="metric-values"><span>95.0%</span><span class="benchmark">baseline 37.4%</span></div>
+    </div>
+        <div class="metric-row">
+      <div class="metric-head"><div class="metric-label">Representment rate on successful CE 3.0 cases</div><div class="metric-note">32 represented from 32 successful-tagged disputes</div></div>
+      <div class="bar-track"><div class="bar-fill neutral" style="width:100.0%"></div><div class="bar-benchmark" style="left:94.1%"></div></div>
+      <div class="metric-values"><span>100.0%</span><span class="benchmark">baseline 94.1%</span></div>
+    </div>
+      </div>
+      <div class="panel">
+        <h2 class="section-title">Key takeaways</h2>
+        <p class="section-intro">A meeting-ready interpretation that stays positive without overselling the data.</p>
+        <div class="takeaways">
+          <div class="take positive"><h3>Encouraging directional signal</h3><p>Successful CE 3.0-tagged cases are showing stronger directional outcomes than the non-CE baseline in this extract, especially on older cohorts.</p></div>
+          <div class="take"><h3>Quality looks better than quantity</h3><p>The evidence here suggests CE 3.0 may be helping on the specific cases it touches, but it is not yet touching enough volume to move the overall portfolio visibly.</p></div>
+          <div class="take caution"><h3>Main limitation</h3><p>Coverage is below 1% of disputes in this file, so the current read is best interpreted as promising early signs rather than programme impact proven.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2 class="section-title">High-level comparison</h2>
+        <p class="section-intro">Simple comparison of the CE 3.0-touched population versus the main non-labelled baseline.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Population</th>
+              <th>Disputes</th>
+              <th>Represented</th>
+              <th>Wins</th>
+              <th>Win rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill pos">Successful CE 3.0</span></td>
+              <td>32</td>
+              <td>$success_repr</td>
+              <td>19</td>
+              <td>59.4%</td>
+            </tr>
+            <tr>
+              <td><span class="pill warn">Fallback CE 3.0</span></td>
+              <td>11</td>
+              <td>11</td>
+              <td>1</td>
+              <td>9.1%</td>
+            </tr>
+            <tr>
+              <td><span class="pill neu">Non-labelled baseline</span></td>
+              <td>5,907</td>
+              <td>5,561</td>
+              <td>1,747</td>
+              <td>29.6%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h2 class="section-title">Why we still need caution</h2>
+        <p class="section-intro">These are the limits of the current read, and they matter.</p>
+        <div class="takeaways">
+          <div class="take"><h3>Very small CE 3.0 volume</h3><p>Only 43 disputes in the file are tagged as CE 3.0-related, versus 5,907 in the baseline population.</p></div>
+          <div class="take"><h3>Recent weeks are naturally incomplete</h3><p>Later dispute cohorts still show representation activity, but not enough elapsed time for win outcomes to settle. That suppresses recent win rates across the board.</p></div>
+          <div class="take"><h3>No clean eligibility split</h3><p>Because the file does not show which cases were eligible but not routed through CE 3.0, we cannot cleanly separate rollout coverage from efficacy.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">What we would say to Uphold</h2>
+      <p class="section-intro">A short narrative you can use in the room.</p>
+      <div class="take positive">
+        <h3>Suggested message</h3>
+        <p>Based on the limited weekly extract we have today, our initial view is that Visa Compelling Evidence 3.0 is showing encouraging early signs on the cases it touches. The most positive signal is that successful CE 3.0-tagged disputes appear to be converting into wins at a meaningfully stronger rate than the wider baseline. The important caveat is that current CE 3.0 coverage is still very small, so this looks more like a promising proof of concept than a portfolio-level impact story yet.</p>
+      </div>
+      <div class="footer-note">Useful extra context: CE 3.0 activity appears in 10 of the weekly cohorts, and the highest weekly CE 3.0 share in the extract was 5.9%. The latest week with CE 3.0 activity in the file is 22 Jun 2026, at 5.9% coverage.</div>
+    </section>
+  </main>
+
+  <hr class="hairline">
+  <div class="ftr"><span>Checkout.com – Uphold – Confidential</span><span>Page 1</span></div>
+</div>
+</body>
+</html>

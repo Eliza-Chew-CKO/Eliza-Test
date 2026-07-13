@@ -1,0 +1,60 @@
+MAKE-DOC-ON-BRAND — Claude Code skill
+Rebuild ANY document as an on-brand Checkout UK letterhead .docx.
+==============================================================================
+
+WHAT THIS DOES
+  Hand Claude any document — Google Doc export, Word, PDF, TextEdit, txt, md,
+  html, even pptx/xlsx — and it re-pours the content onto the Checkout UK
+  letterhead: logo + UK address header, footer, correct fonts and palette.
+  You can give it one file or several.
+
+REQUIREMENTS
+  - Claude Code installed (desktop app, CLI, or IDE extension)
+  - Python 3  (build step uses the standard library only — no pip needed)
+  - markitdown  (converts any source file to Markdown)
+
+------------------------------------------------------------------------------
+INSTALL — 4 steps
+------------------------------------------------------------------------------
+
+1) Make sure your skills folder exists, then unzip this into it:
+
+     mkdir -p ~/.claude/skills
+     unzip ~/Downloads/make-doc-on-brand.zip -d ~/.claude/skills/
+
+   You should end up with:  ~/.claude/skills/make-doc-on-brand/SKILL.md
+
+2) Install markitdown (one time):
+
+     python3 -m pip install markitdown
+
+3) Restart Claude Code (quit + reopen, or start a new session) so it picks up
+   the new skill.
+
+4) Verify it's installed:
+
+     ls ~/.claude/skills/make-doc-on-brand/SKILL.md
+
+   If that path prints without error, you're done.
+
+------------------------------------------------------------------------------
+HOW TO USE
+------------------------------------------------------------------------------
+
+  In Claude, just ask naturally and give it your file(s), e.g.:
+     "Put this document on our Checkout letterhead"  (+ the file path)
+
+  - Any format works; you can drop files into the skill's input/ folder or just
+    pass a path.
+  - Google Docs: there's no direct connection — in Google Docs choose
+    File -> Download -> Word (.docx) or PDF, then give Claude that file.
+  - Output lands in the skill's output/ folder as "<name> -onbrand.docx".
+
+------------------------------------------------------------------------------
+NOTES
+------------------------------------------------------------------------------
+  - Fonts: the output looks best with Roboto Mono and Inter installed. It still
+    opens fine without them — you'll just see substitute fonts.
+  - House rule: Roboto Mono text (title / subtitle / headings) is ALWAYS
+    UPPERCASE — the renderer enforces this automatically.
+  - Claude reads your source read-only and never edits it or the template.

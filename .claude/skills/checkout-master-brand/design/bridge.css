@@ -1,0 +1,91 @@
+/* ============================================================
+   Checkout.com — Master Brand · HTML bridge layer
+   Appended by build.py for HTML inputs only.
+
+   Source HTML keeps its markup verbatim — including class
+   names — but we strip its stylesheet. This bridge repaints
+   COMMON document-pattern classes (panels, meta grids, metric
+   bars, pills, takeaway cards, steps…) with brand tokens so
+   class-based layouts don't collapse. Purely presentational:
+   zero content changes. Unknown classes simply flow as clean
+   unstyled blocks.
+   ============================================================ */
+
+/* --- page scaffolding --- */
+.shell,main{display:block}
+section{margin:26px 0}
+.hero{display:grid;grid-template-columns:1.8fr 1fr;gap:12px;align-items:stretch;margin:12px 0}
+@media(max-width:720px){.hero{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+
+/* --- panels / cards --- */
+.panel{background:var(--white);border-radius:12px;padding:20px 22px;min-width:0;overflow-x:auto}
+.hero .panel{margin:0}
+.panel table{font-size:12px}
+.panel th,.panel td{padding:7px 8px 7px 0}
+/* a panel holding a table needs the full row — don't squeeze data */
+.grid .panel:has(table){grid-column:1/-1}
+
+/* --- eyebrows, titles, steps, section intros --- */
+.eyebrow,.step,.signal-badge{font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);margin-bottom:8px}
+.step{color:var(--blue-1);margin-bottom:4px}
+.signal-badge{color:var(--blue-1)}
+.title{margin-top:0}
+.subtitle{font-size:14px;line-height:1.47;color:var(--grey-8)}  /* leading −5% vs body 1.55 */
+.section-title{margin-top:0}
+.section-intro{color:var(--grey-8)}
+.footer-note{font-size:11px;color:var(--grey-6);border-top:1px solid var(--grey-1);padding-top:10px;margin-top:14px}
+
+/* --- meta grids (label / value / sub) --- */
+.meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-top:18px}
+.meta-label{font:700 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--grey-6);margin-bottom:1px}
+.meta-value{font:700 20px/1.15 var(--sans)}
+.meta-sub{font-size:10.5px;color:var(--grey-6)}
+
+/* --- signal / stat card --- */
+.signal-card{display:flex;flex-direction:column;justify-content:space-between}
+.signal-big{font:700 39px/1.1 var(--mono);letter-spacing:.02em;margin:2px 0 8px}
+.signal-copy{font-size:12.5px}
+
+/* --- approach / step lists --- */
+.approach-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px}
+.approach-item{background:var(--off-white);border:1px solid var(--grey-1);border-radius:var(--radius);padding:14px 16px}
+.approach-item p{font-size:12.5px;margin:6px 0 0}
+
+/* --- takeaway cards --- */
+.takeaways{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px}
+.take{background:var(--off-white);border:1px solid var(--grey-1);border-radius:var(--radius);padding:14px 16px}
+.take h3{margin:0 0 6px;font:500 13px var(--sans)}
+.take p{font-size:12.5px;margin:0}
+/* tint bgs stay light — keep ALL text dark inside, even in dark mode */
+.take.positive{background:var(--ok-bg);border-color:transparent;color:var(--ok-text)}
+.take.positive h3,.take.positive p{color:var(--ok-text)}
+.take.caution{background:var(--pending-bg);border-color:transparent;color:var(--pending-text)}
+.take.caution h3,.take.caution p{color:var(--pending-text)}
+
+/* --- metric rows with bars --- */
+.metric-row{margin:16px 0}
+.metric-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.metric-label{font:600 13px var(--sans)}
+.metric-note{font-size:11px;color:var(--grey-6)}
+.bar-track{position:relative;height:10px;background:var(--grey-1);border-radius:999px;overflow:visible}
+.bar-fill{position:absolute;top:0;left:0;height:100%;border-radius:999px;background:var(--blue-1)}
+.bar-fill.positive{background:var(--blue-1)}
+.bar-fill.neutral{background:var(--grey-6)}
+.bar-benchmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--off-black)}
+.metric-values{display:flex;justify-content:space-between;font:700 13px var(--mono);margin-top:6px}
+.metric-values .benchmark,.benchmark{font:400 11px var(--sans);color:var(--grey-6)}
+
+/* --- pills (map to brand status pairs) --- */
+.pill{display:inline-block;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 10px;border-radius:999px;white-space:nowrap;background:var(--neutral-bg);color:var(--neutral-text)}
+.pill.pos{background:var(--ok-bg);color:var(--ok-text)}
+.pill.neu{background:var(--neutral-bg);color:var(--neutral-text)}
+.pill.warn{background:var(--pending-bg);color:var(--pending-text)}
+
+/* --- dark colourway (mirrors brand.css's .dark section) --- */
+.dark .subtitle,.dark .section-intro{color:#9CA3AF}
+.dark .eyebrow,.dark .meta-label,.dark .meta-sub,.dark .metric-note,
+.dark .benchmark,.dark .metric-values .benchmark,.dark .footer-note{color:#9CA3AF}
+.dark .footer-note{border-top-color:#2E3036}
+.dark .bar-benchmark{background:var(--dark-text)}
