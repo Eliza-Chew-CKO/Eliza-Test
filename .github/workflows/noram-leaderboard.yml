@@ -45,9 +45,11 @@ jobs:
       - name: Refresh leaderboard canvas
         if: steps.gate.outputs.skip != 'true'
         env:
-          SHEET_CSV_URL: ${{ secrets.SHEET_CSV_URL }}
+          # Non-sensitive config (published-public sheet + Slack identifiers) is
+          # set here directly. Only the Slack token is a repo secret.
+          SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vS0cTxJKMvsE0NoE9NJ-2txtV4S2nyiuxYW4x2D2itK7CanwDtBhw49Djag6EVEsj5KMVMg2AN-nNRU/pub?gid=272887757&single=true&output=csv"
+          SLACK_CANVAS_ID: "F0BGZUDCJ0J"
+          SLACK_TEAM_ID: "T0251H42B"
+          SLACK_DM_CHANNEL: "U0AGKMJTZ43"
           SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
-          SLACK_CANVAS_ID: ${{ secrets.SLACK_CANVAS_ID }}
-          SLACK_TEAM_ID: ${{ secrets.SLACK_TEAM_ID }}
-          SLACK_DM_CHANNEL: ${{ secrets.SLACK_DM_CHANNEL }}
         run: python noram-leaderboard/leaderboard.py

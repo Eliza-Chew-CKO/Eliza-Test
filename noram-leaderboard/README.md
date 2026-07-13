@@ -20,24 +20,26 @@ holds, so as the sheet refreshes, the canvas follows.
 
 ## Setup
 
-### 1. Publish the summary-metrics tab as CSV
+### 1. Publish the summary-metrics tab as CSV (done)
 In the sheet: **File → Share → Publish to web** → choose the **summary metrics**
-tab → **Comma-separated values (.csv)** → Publish. Copy the generated URL (looks
-like `https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?gid=...&single=true&output=csv`).
+tab → **Comma-separated values (.csv)** → Publish. The published URL is already
+wired into the workflow's `SHEET_CSV_URL`.
 
-> This makes that tab's contents reachable by anyone with the link. Publish only
-> the summary-metrics tab, not the whole workbook.
+> This makes that tab's contents reachable by anyone with the link. Only the
+> summary-metrics tab is published, not the whole workbook.
 
-### 2. Add GitHub Actions secrets
-Repo → Settings → Secrets and variables → Actions:
+### 2. Add the one required secret
+The non-sensitive config (`SHEET_CSV_URL`, `SLACK_CANVAS_ID`, `SLACK_TEAM_ID`,
+`SLACK_DM_CHANNEL`) is set directly in `.github/workflows/noram-leaderboard.yml`.
+The only value that must be a repo secret is the Slack token:
+
+Repo → Settings → Secrets and variables → Actions → **New repository secret**:
 
 | Secret | Value |
 |---|---|
-| `SHEET_CSV_URL` | the published CSV url from step 1 |
 | `SLACK_TOKEN` | Slack bot/user token with `canvases:write` |
-| `SLACK_CANVAS_ID` | `F0BGZUDCJ0J` (the canvas to rewrite) |
-| `SLACK_TEAM_ID` | `T0251H42B` (only used to build the notify link) |
-| `SLACK_DM_CHANNEL` | optional — user/channel id to DM (e.g. `U0AGKMJTZ43`) |
+
+To change a non-secret value later, edit the `env:` block in the workflow.
 
 ## Run locally
 
